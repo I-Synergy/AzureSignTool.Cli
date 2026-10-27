@@ -34,7 +34,7 @@ The following basic preparations are required for all guides:
   inputs:
     command: 'custom'
     custom: 'tool'
-    arguments: 'install --global I-Synergy.Tools.Azure.SignTool'
+    arguments: 'install --global AzureSignTool.Cli'
   displayName: Install AzureSignTool
 ```
 
@@ -75,7 +75,7 @@ The following basic preparations are required for all guides:
   inputs:
     command: 'custom'
     custom: 'tool'
-    arguments: 'install --global I-Synergy.Tools.Azure.SignTool'
+    arguments: 'install --global AzureSignTool.Cli'
   displayName: Install AzureSignTool
 ```
 
@@ -162,6 +162,66 @@ sign:
   artifacts:
     paths:
       - example.exe
+```
+
+## Using AzureSignTool to sign files with GitHub Actions
+
+* Go to KeyVault's the `Access Policies` section and create an access policy for the signing
+  identity with the below permissions:
+
+  | Area | Permissions |
+  | ---- | ----------- |
+  | Key | Sign |
+  | Secret | Get |
+  | Certificate | Get |
+
+* Federate the service principal with the repository (Azure → App registration → Certificates &
+  secrets → Federated credentials), then store `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`,
+  `AZURE_SUBSCRIPTION_ID`, `AZURE_KEYVAULT_URI`, `AZURE_SIGNING_CERTIFICATE` and
+  `TIMESTAMP_URL` as repository variables.
+
+* Add the signing job to your workflow:
+
+```yml
+jobs:
+  sign:
+    runs-on: windows-latest   # AzureSignTool calls mssign32/crypt32, so signing is Windows-only
+    permissions:
+      id-token: write         # OIDC login to Azure
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install AzureSignTool
+        shell: pwsh
+        run: |
+          dotnet tool install --global AzureSignTool.Cli
+          "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Sign output
+        shell: pwsh
+        env:
+          KEY_VAULT_URI: ${{ vars.AZURE_KEYVAULT_URI }}
+          SIGNING_CERTIFICATE: ${{ vars.AZURE_SIGNING_CERTIFICATE }}
+          TIMESTAMP_URL: ${{ vars.TIMESTAMP_URL }}
+        run: >
+          AzureSignTool sign
+          -kvu "$env:KEY_VAULT_URI"
+          -kvc "$env:SIGNING_CERTIFICATE"
+          -act WorkloadIdentityCredential
+          --timestamp-rfc3161 "$env:TIMESTAMP_URL"
+          -td sha256 -v
+          .\bin\MyApp.exe
 ```
 
 Happy signing!

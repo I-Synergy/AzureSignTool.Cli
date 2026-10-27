@@ -1,0 +1,135 @@
+﻿using AzureSignTool.Core.Configurations;
+using AzureSignTool.Core.Enumerations;
+using AzureSignTool.Core.Services;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
+
+namespace AzureSignTool.Core.Tests.Services;
+
+[TestClass]
+[OSCondition(OperatingSystems.Windows)]
+public class CodeSigningServiceTests
+{
+    private DirectoryInfo? _scratchDirectory;
+
+    [TestInitialize]
+    public void TestInitialize()
+    {
+        var directory = Path.Join(Path.GetTempPath(), "AzureSignTool.Core.Tests");
+        _scratchDirectory = Directory.CreateDirectory(directory);
+    }
+
+    [TestCleanup]
+    public void TestCleanup()
+    {
+        _scratchDirectory?.Delete(true);
+    }
+
+    [TestMethod]
+    [DataRow("Certificates/Sign/rsa-2048.pfx")]
+    [DataRow("Certificates/Sign/rsa-4096.pfx")]
+    public void ShouldSignExeWithRSASigningCertificates_Sha1FileDigest(string certificate)
+    {
+        var signingCert = X509CertificateLoader.LoadPkcs12FromFile(certificate, "test", X509KeyStorageFlags.EphemeralKeySet);
+        var signer = new CodeSigningService(signingCert.GetRSAPrivateKey()!, signingCert, HashAlgorithmName.SHA1, TimeStampConfiguration.None);
+        var fileToSign = GetFileToSign();
+        var result = signer.SignFile(fileToSign, null, null, null);
+        Assert.AreEqual(0, result);
+        if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 20348))
+        {
+            result = signer.SignFile(fileToSign, null, null, null, appendSignature: true);
+            Assert.AreEqual(0, result);
+            result = signer.SignFile(fileToSign, null, null, null, appendSignature: false);
+            Assert.AreEqual(0, result);
+        }
+    }
+
+    [TestMethod]
+    [DataRow("Certificates/Sign/rsa-2048.pfx")]
+    [DataRow("Certificates/Sign/rsa-4096.pfx")]
+    public void ShouldSignExeWithRSASigningCertificates_Sha256FileDigest(string certificate)
+    {
+        var signingCert = X509CertificateLoader.LoadPkcs12FromFile(certificate, "test", X509KeyStorageFlags.EphemeralKeySet);
+        var signer = new CodeSigningService(signingCert.GetRSAPrivateKey()!, signingCert, HashAlgorithmName.SHA256, TimeStampConfiguration.None);
+        var fileToSign = GetFileToSign();
+        var result = signer.SignFile(fileToSign, null, null, null);
+        Assert.AreEqual(0, result);
+        if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 20348))
+        {
+            result = signer.SignFile(fileToSign, null, null, null, appendSignature: true);
+            Assert.AreEqual(0, result);
+            result = signer.SignFile(fileToSign, null, null, null, appendSignature: false);
+            Assert.AreEqual(0, result);
+        }
+    }
+
+    [TestMethod]
+    [DataRow("Certificates/Sign/ecdsa-nist-p256.pfx")]
+    [DataRow("Certificates/Sign/ecdsa-nist-p384.pfx")]
+    [DataRow("Certificates/Sign/ecdsa-nist-p521.pfx")]
+    public void ShouldSignExeWithECDsaSigningCertificates_Sha256FileDigest(string certificate)
+    {
+        var signingCert = X509CertificateLoader.LoadPkcs12FromFile(certificate, "test", X509KeyStorageFlags.EphemeralKeySet);
+        var signer = new CodeSigningService(signingCert.GetECDsaPrivateKey()!, signingCert, HashAlgorithmName.SHA256, TimeStampConfiguration.None);
+        var fileToSign = GetFileToSign();
+        var result = signer.SignFile(fileToSign, null, null, null);
+        Assert.AreEqual(0, result);
+        if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 20348))
+        {
+            result = signer.SignFile(fileToSign, null, null, null, appendSignature: true);
+            Assert.AreEqual(0, result);
+            result = signer.SignFile(fileToSign, null, null, null, appendSignature: false);
+            Assert.AreEqual(0, result);
+        }
+    }
+
+    [TestMethod]
+    [DataRow("Certificates/Sign/ecdsa-nist-p256.pfx")]
+    [DataRow("Certificates/Sign/ecdsa-nist-p384.pfx")]
+    [DataRow("Certificates/Sign/ecdsa-nist-p521.pfx")]
+    public void ShouldSignExeWithECDsaSigningCertificates_Sha256FileDigest_WithTimestamps(string certificate)
+    {
+        var signingCert = X509CertificateLoader.LoadPkcs12FromFile(certificate, "test", X509KeyStorageFlags.EphemeralKeySet);
+        var timestampConfig = new TimeStampConfiguration("http://timestamp.digicert.com", HashAlgorithmName.SHA256, TimeStampType.RFC3161);
+        var signer = new CodeSigningService(signingCert.GetECDsaPrivateKey()!, signingCert, HashAlgorithmName.SHA256, timestampConfig);
+        var fileToSign = GetFileToSign();
+        var result = signer.SignFile(fileToSign, null, null, null);
+        Assert.AreEqual(0, result);
+        if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 20348))
+        {
+            result = signer.SignFile(fileToSign, null, null, null, appendSignature: true);
+            Assert.AreEqual(0, result);
+            result = signer.SignFile(fileToSign, null, null, null, appendSignature: false);
+            Assert.AreEqual(0, result);
+        }
+    }
+
+    [TestMethod]
+    [DataRow("Certificates/Sign/rsa-2048.pfx")]
+    [DataRow("Certificates/Sign/rsa-4096.pfx")]
+    public void ShouldSignExeWithRSASigningCertificates_Sha256FileDigest_WithTimestamps(string certificate)
+    {
+        var signingCert = X509CertificateLoader.LoadPkcs12FromFile(certificate, "test", X509KeyStorageFlags.EphemeralKeySet);
+        var timestampConfig = new TimeStampConfiguration("http://timestamp.digicert.com", HashAlgorithmName.SHA256, TimeStampType.RFC3161);
+        var signer = new CodeSigningService(signingCert.GetRSAPrivateKey()!, signingCert, HashAlgorithmName.SHA256, timestampConfig);
+        var fileToSign = GetFileToSign();
+        var result = signer.SignFile(fileToSign, null, null, null);
+        Assert.AreEqual(0, result);
+        if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 20348))
+        {
+            result = signer.SignFile(fileToSign, null, null, null, appendSignature: true);
+            Assert.AreEqual(0, result);
+            result = signer.SignFile(fileToSign, null, null, null, appendSignature: false);
+            Assert.AreEqual(0, result);
+        }
+    }
+
+    private string GetFileToSign()
+    {
+        var guid = Guid.NewGuid();
+        var path = Path.Combine(_scratchDirectory!.FullName, $"{guid}.exe");
+        File.Copy("signtarget.exe", path);
+        return path;
+    }
+
+}

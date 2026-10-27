@@ -4,18 +4,19 @@
     <NoWarn>$(NoWarn);NU1507</NoWarn>
   </PropertyGroup>
   <ItemGroup>
-    <PackageVersion Include="Azure.Identity" Version="1.17.1" />
-    <PackageVersion Include="Azure.Security.KeyVault.Certificates" Version="4.8.0" />
-    <PackageVersion Include="Azure.Security.KeyVault.Keys" Version="4.8.0" />
-    <PackageVersion Include="coverlet.collector" Version="6.0.4" />
-    <PackageVersion Include="Microsoft.Extensions.FileSystemGlobbing" Version="10.0.2" />
-    <PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.2" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="10.0.2" />
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
-    <PackageVersion Include="System.CommandLine" Version="2.0.2" />
-    <PackageVersion Include="MSTest.TestAdapter" Version="4.0.2" />
-    <PackageVersion Include="MSTest.TestFramework" Version="4.0.2" />
+    <PackageVersion Include="Azure.Identity" Version="1.21.0" />
+    <PackageVersion Include="Azure.Security.KeyVault.Certificates" Version="4.9.2" />
+    <PackageVersion Include="Azure.Security.KeyVault.Keys" Version="4.10.2" />
+    <PackageVersion Include="coverlet.collector" Version="10.1.0" />
+    <PackageVersion Include="Microsoft.Extensions.FileSystemGlobbing" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+    <PackageVersion Include="System.CommandLine" Version="2.0.14" />
+    <PackageVersion Include="MSTest.TestAdapter" Version="4.5.1" />
+    <PackageVersion Include="MSTest.TestFramework" Version="4.5.1" />
     <PackageVersion Include="System.IO.Packaging" Version="10.0.2" />
-    <PackageVersion Include="NuGet.Packaging" Version="7.0.1" />
+    <PackageVersion Include="NuGet.Packaging" Version="7.9.0" />
+    <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="10.0.14" />
   </ItemGroup>
 </Project>

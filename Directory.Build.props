@@ -5,12 +5,12 @@
     <DefaultLanguage>en-US</DefaultLanguage>
     <Authors>Ismail Hassani</Authors>
     <Company>International Intelligence</Company>
-    <Product>I-Synergy Tools - Azure Code Signing</Product>
+    <Product>AzureSignTool.Cli - Azure Code Signing</Product>
     <Copyright>© 2008-2025 International Intelligence. All rights reserved.</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RepositoryType>git</RepositoryType>
-    <RepositoryUrl>https://github.com/I-Synergy/I-Synergy.Tools.Azure.SignTool</RepositoryUrl>
-    <PackageProjectUrl>https://github.com/I-Synergy/I-Synergy.Tools.Azure.SignTool</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/I-Synergy/AzureSignTool.Cli</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/I-Synergy/AzureSignTool.Cli</PackageProjectUrl>
     <PackageIcon>icon.png</PackageIcon>
     <PackageReadmeFile>readme.md</PackageReadmeFile>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
@@ -26,9 +26,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <NoWarn>1701;1702;CS1591;CS8002;NETSDK1023;UXAML0002;NU5104;NETSDK1057;XC0103;NU1608;XA1023;</NoWarn>
-    <SignAssembly>True</SignAssembly>
-    <AssemblyOriginatorKeyFile>..\..\I-Synergy.Tools.Azure.SignTool.snk</AssemblyOriginatorKeyFile>
-    <AssemblyOriginatorKeyFile Condition="EXISTS('..\..\..\..\..\..\I-Synergy.Tools.Azure.SignTool.snk')">..\..\..\..\..\..\I-Synergy.Tools.Azure.SignTool.snk</AssemblyOriginatorKeyFile>
     <WarnOnPackingNonPackableProject>false</WarnOnPackingNonPackableProject>
     <AccelerateBuildsInVisualStudio>true</AccelerateBuildsInVisualStudio>
     <NuGetAuditMode>direct</NuGetAuditMode>
