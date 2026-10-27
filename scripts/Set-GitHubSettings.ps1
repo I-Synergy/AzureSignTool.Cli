@@ -38,8 +38,6 @@ param(
 
     [string]$AzureTenantId,
 
-    [string]$AzureSubscriptionId,
-
     [string]$AzureKeyVaultUri,
 
     [string]$AzureSigningCertificate,
@@ -138,7 +136,6 @@ $variables = [ordered]@{
     BUILD_CONFIGURATION       = Read-Value 'Build configuration [Release]' $BuildConfiguration
     AZURE_CLIENT_ID           = Read-Value 'Azure client id (OIDC)' $AzureClientId
     AZURE_TENANT_ID           = Read-Value 'Azure tenant id (OIDC)' $AzureTenantId
-    AZURE_SUBSCRIPTION_ID     = Read-Value 'Azure subscription id (OIDC)' $AzureSubscriptionId
     AZURE_KEYVAULT_URI        = Read-Value 'Key Vault URI (blank = skip package signing)' $AzureKeyVaultUri
     AZURE_SIGNING_CERTIFICATE = Read-Value 'Key Vault certificate name' $AzureSigningCertificate
     TIMESTAMP_URL             = Read-Value 'RFC 3161 timestamp URL' $TimestampUrl

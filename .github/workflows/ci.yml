@@ -5,7 +5,6 @@
 #   BUILD_CONFIGURATION       - build configuration (default Release)
 #   AZURE_CLIENT_ID           - service principal/app registration id   (release, OIDC)
 #   AZURE_TENANT_ID           - Entra ID tenant id                      (release, OIDC)
-#   AZURE_SUBSCRIPTION_ID     - Azure subscription id                   (release, OIDC)
 #   AZURE_KEYVAULT_URI        - Key Vault URI; when unset, signing is skipped
 #   AZURE_SIGNING_CERTIFICATE - certificate name inside the Key Vault   (release)
 #   TIMESTAMP_URL             - RFC 3161 timestamp server               (release)
@@ -241,13 +240,26 @@ jobs:
           name: nupkgs
           path: packages
 
-      - name: Azure login (OIDC)
+      # The signing app has no subscription role: it reaches the vault through its access policy.
+      # azure/login insists on finding a subscription, so the OIDC token is requested directly and
+      # handed to WorkloadIdentityCredential through the environment it documents.
+      - name: Acquire federated token
         if: vars.AZURE_KEYVAULT_URI != ''
-        uses: azure/login@v2
-        with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+        shell: pwsh
+        run: |
+          $tokenPath = Join-Path $env:RUNNER_TEMP 'azure-federated-token'
+          $response = Invoke-RestMethod `
+            -Uri "$env:ACTIONS_ID_TOKEN_REQUEST_URL&audience=api://AzureADTokenExchange" `
+            -Headers @{ Authorization = "Bearer $env:ACTIONS_ID_TOKEN_REQUEST_TOKEN" }
+          Set-Content -Path $tokenPath -Value $response.value -NoNewline
+
+          @(
+            "AZURE_FEDERATED_TOKEN_FILE=$tokenPath"
+            "AZURE_CLIENT_ID=${{ vars.AZURE_CLIENT_ID }}"
+            "AZURE_TENANT_ID=${{ vars.AZURE_TENANT_ID }}"
+          ) | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+          Write-Host "Federated token written to $tokenPath"
 
       - name: Sign NuGet packages
         if: vars.AZURE_KEYVAULT_URI != ''

@@ -437,8 +437,9 @@ everything, using an authenticated `gh` CLI:
   required reviewers (`-Reviewers`, default `ismailhassani`); `acceptance` is deliberately
   **ungated**, so a pull request publishes its preview from CI without approval.
 - **Variables**: `BUILD_CONFIGURATION` (optional, defaults to `Release`), `AZURE_CLIENT_ID`,
-  `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `AZURE_KEYVAULT_URI`, `AZURE_SIGNING_CERTIFICATE`,
-  `TIMESTAMP_URL`.
+  `AZURE_TENANT_ID`, `AZURE_KEYVAULT_URI`, `AZURE_SIGNING_CERTIFICATE`, `TIMESTAMP_URL`. No
+  subscription id is needed: the release job requests the OIDC token directly and signs through the
+  Key Vault access policy, so the identity needs no Azure role assignment.
 - **Secret**: `NUGET_USER` — the nuget.org username used for trusted publishing
   (`ismailhassani`, not the `I-Synergy` organization). The release job fails fast with a clear
   message when it is missing.
