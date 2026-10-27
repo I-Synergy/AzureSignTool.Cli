@@ -214,10 +214,14 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install .NET SDK from global.json
+      # The release job never compiles anything: it only needs a .NET 10 host for the built
+      # signing tool and the CLI for `dotnet nuget push`. Asking for 10.0.x lets setup-dotnet
+      # reuse an SDK already in the runner's tool cache; global.json's `rollForward:
+      # latestFeature` accepts any 10.0.x feature band.
+      - name: Install .NET SDK 10.0
         uses: actions/setup-dotnet@v6
         with:
-          global-json-file: global.json
+          dotnet-version: '10.0.x'
 
       - name: Validate publishing configuration
         shell: pwsh
