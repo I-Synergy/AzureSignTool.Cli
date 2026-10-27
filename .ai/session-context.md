@@ -171,3 +171,16 @@ Applied through the GitHub REST API (token from Git Credential Manager) and `az`
   `repo:I-Synergy/AzureSignTool.Cli:environment:{production,acceptance}`.
 - Signing app's Key Vault access policy already grants keys Sign/Get and certificates Get/List;
   certificate `sslcom-code-signing-certificate` expires 2029-01-29.
+
+## Mirror removed, warnings fixed, main is live (2026-10-27, Reasonix Code)
+
+- `.github/workflows/mirror-to-azure.yml` deleted (no Azure DevOps repo exists); the mirroring
+  section and tree entry in `TEMPLATE-OVERVIEW.md` removed with it.
+- `CreateManagedIdentityCredential` now uses `ManagedIdentityCredentialOptions(ManagedIdentityId)`
+  — `ManagedIdentityCredential(string, TokenCredentialOptions)` was obsolete.
+- README acknowledgement link simplified; the nested-parenthesis link made
+  `.ai/tests/validate-references.sh` fail.
+- Pushed to `main`; CI build job green, release job waiting for the `production` approval.
+- `Validate Claude Template` still fails, only at `validate-standards.py`: row
+  ISO/IEC/IEEE 29119-3:2021 declares `Evidence`, the project produces none of the
+  `docs/slices/*` test plans or `docs/test-reports/*`. All other 10 suites pass locally.
