@@ -21,6 +21,7 @@ A code signing tool that uses **Azure Key Vault** for performing the signing pro
 - [🛠 Building & Continuous Integration](#-building--continuous-integration)
 - [📋 Requirements](#-requirements)
 - [📄 License](#-license)
+- [🤖 AI-Assisted Development](#-ai-assisted-development)
 - [✅ Standards Compatibility](#standards-compatibility)
 
 ---
@@ -469,6 +470,29 @@ This project is licensed under the [MIT License](LICENSE).
 ## 🙏 Acknowledgments
 
 This project is based on [AzureSignTool](https://github.com/vcsjones/AzureSignTool) by [Kevin Jones](https://github.com/vcsjones).
+
+## 🤖 AI-Assisted Development
+
+This repository is developed with AI agents. `.ai/` is the single source of truth for patterns,
+skills and project context, and every client reads it through directory junctions. Code and design
+work is delegated to these subagents:
+
+| Agent | Role |
+|-------|------|
+| `architect` | Feature design, pattern selection, component boundaries, architecture analysis |
+| `reviewer` | Code quality, SOLID, security review, architecture audit, ISO/IEC 25010 findings |
+| `security` | Blast-radius and exposure analysis, threat modelling, OWASP review, dependency and secret audits |
+| `tester` | MSTest test design, BDD scenarios, integration test strategy |
+| `designer` | Visual design — colour palettes, typography, branding, design tokens |
+| `developer` | .NET/C# implementation — refactoring, builds |
+| `ui-developer` | Blazor/MAUI components, layouts, CSS/styling, UX patterns |
+| `ui-tester` | Playwright E2E tests, accessibility checks, visual regression |
+| `writer` | XML docs, READMEs, ADRs, technical prose |
+
+Each agent's `model:` frontmatter in `.ai/agents/` carries a tier alias (`sonnet` or `haiku`); the
+concrete model bound to that tier is chosen by the backend runtime outside this repository.
+
+---
 
 <!-- BEGIN standards-status -->
 ## Standards Compatibility
