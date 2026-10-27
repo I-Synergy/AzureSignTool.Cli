@@ -56,3 +56,12 @@ re-scoping the manifest row — the manifest is template-owned.
 - `.github/readme.md` — removed (duplicate, shadowed by the root README)
 - `COMPLIANCE.md` — generated
 - `.ai/session-context.md` — decision recorded
+
+## Follow-up (2026-10-27): the standards row is now Aligned
+
+`validate-standards.py` was red on `main` because row 1 declared `Evidence` while this project
+produces none of the slice test plans or release reports. The manifest row was demoted to
+`Aligned` with the reason written into the row (the documented remedy), `COMPLIANCE.md` and the
+README block were regenerated (`Evidence` group is now *(none)*), and the validator passes:
+0 Evidence rows, 0 failures. The workflow actions were also moved to their Node 24 majors
+(checkout v7, setup-python v7, setup-dotnet v6, upload-artifact v7, download-artifact v8).

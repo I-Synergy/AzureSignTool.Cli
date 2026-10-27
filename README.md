@@ -488,5 +488,5 @@ aligned in practice only, and what stays outside a code repository's reach — i
 issued by an accredited third-party body after auditing an organizational management system; it
 cannot be established by a code repository.
 
-<!-- standards-status: source=.ai/reference/standards.md generated=2026-10-27 revision=e0b0ffb validators=validate-traceability.py:0 -->
+<!-- standards-status: source=.ai/reference/standards.md generated=2026-10-27 revision=a409723 validators=none -->
 <!-- END standards-status -->
