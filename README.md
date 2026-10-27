@@ -467,7 +467,7 @@ This project is licensed under the [MIT License](LICENSE).
 
 ## 🙏 Acknowledgments
 
-This project is based on [AzureSignTool](https://github.com/vcsjones/AzureSignTool) by Kevin Jones ([@vcsjones](https://github.com/vcsjones)).
+This project is based on [AzureSignTool](https://github.com/vcsjones/AzureSignTool) by [Kevin Jones](https://github.com/vcsjones).
 
 <!-- BEGIN standards-status -->
 ## Standards Compatibility
