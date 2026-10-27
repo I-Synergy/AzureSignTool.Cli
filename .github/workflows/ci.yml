@@ -279,6 +279,8 @@ jobs:
             -act WorkloadIdentityCredential `
             --timestamp-rfc3161 "$env:TIMESTAMP_URL" `
             -td sha256 -v `
+            --sign-nuget-contents `
+            --sign-nuget-contents-filter "AzureSignTool*" `
             (Get-ChildItem -Path 'packages' -Filter *.nupkg).FullName
           if ($LASTEXITCODE -ne 0) { throw 'Package signing failed.' }
 
