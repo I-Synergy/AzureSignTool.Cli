@@ -1,4 +1,4 @@
-# .NET Development Template
+﻿# .NET Development Template
 
 Professional .NET development template with AI-powered agent orchestration and modular architecture.
 
@@ -302,8 +302,7 @@ In this template repository, the file stays as the unfilled placeholder. Project
 ├── .github/
 │   ├── copilot-instructions.md      # GitHub Copilot instructions
 │   ├── workflows/
-│   │   ├── validate-template.yml    # Runs the validation suite in CI
-│   │   └── mirror-to-azure.yml      # Mirrors GitHub → Azure DevOps (see below)
+│   │   └── validate-template.yml    # Runs the validation suite in CI
 │   ├── skills/  → .ai/skills/       # Junction — do not edit
 │   └── agents/  → .ai/agents/       # Junction — do not edit
 ├── .reasonix/
@@ -611,18 +610,5 @@ Every session (Claude Code, GitHub Copilot, and Reasonix Code):
 | `.ai/reference/test-documentation.md` | Which ISO/IEC/IEEE 29119-3 test documents are produced — and which are deliberate omissions |
 | `.ai/reference/standards.md` | Standards-compatibility manifest read by `verify-config` |
 | `.ai/project/` | Project-specific context files |
-
-## Repository Mirroring
-
-This repository lives in two places: **GitHub** (`I-Synergy/AI`, source of truth) and **Azure DevOps**. A GitHub Action keeps them aligned automatically.
-
-**Mechanism:** `.github/workflows/mirror-to-azure.yml` runs on every push to `main` and `development/main` (and on manual dispatch), force-pushing the full history to Azure DevOps via `git push --mirror`. GitHub is authoritative; any manual change made directly on Azure DevOps is overwritten on the next mirror.
-
-**One-time setup:**
-
-1. Create an Azure DevOps Personal Access Token with `Code (Read & Write)` scope for the target repo/org.
-2. Add it as a GitHub Actions secret named `AZURE_DEVOPS_PAT` (Settings → Secrets and variables → Actions → New repository secret).
-
-The PAT is injected via `env` and never logged; `--mirror` also propagates branch/tag deletions, so treat Azure DevOps as a read-only copy.
 
 ## [License](LICENSE)

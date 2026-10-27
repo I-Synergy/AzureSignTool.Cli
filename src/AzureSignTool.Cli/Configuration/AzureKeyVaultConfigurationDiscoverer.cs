@@ -1,4 +1,4 @@
-using Azure.Core;
+﻿using Azure.Core;
 using Azure.Identity;
 using Azure.Security.KeyVault.Certificates;
 using AzureSignTool.Cli.Credentials;
@@ -140,40 +140,24 @@ internal class AzureKeyVaultConfigurationDiscoverer
 
     private TokenCredential CreateManagedIdentityCredential(AzureKeyVaultSignConfigurationSet configuration, Uri? authorityHost)
     {
-        if (!string.IsNullOrWhiteSpace(configuration.AzureClientId))
-        {
-            _logger.LogInformation($"Creating ManagedIdentityCredential with Client ID: {configuration.AzureClientId}");
-        }
-        else
-        {
-            _logger.LogInformation("Creating ManagedIdentityCredential with system-assigned identity");
-        }
+        bool hasClientId = !string.IsNullOrWhiteSpace(configuration.AzureClientId);
 
-        ManagedIdentityCredentialOptions? options = null;
-        
+        _logger.LogInformation(hasClientId
+            ? $"Creating ManagedIdentityCredential with Client ID: {configuration.AzureClientId}"
+            : "Creating ManagedIdentityCredential with system-assigned identity");
+
+        ManagedIdentityId identityId = hasClientId
+            ? ManagedIdentityId.FromUserAssignedClientId(configuration.AzureClientId!)
+            : ManagedIdentityId.SystemAssigned;
+
+        ManagedIdentityCredentialOptions options = new(identityId);
+
         if (authorityHost is not null)
         {
-            options = new ManagedIdentityCredentialOptions
-            {
-                AuthorityHost = authorityHost
-            };
+            options.AuthorityHost = authorityHost;
         }
-        
-        if (!string.IsNullOrWhiteSpace(configuration.AzureClientId))
-        {
-            if (options is not null)
-            {
-                return new ManagedIdentityCredential(configuration.AzureClientId, options);
-            }
-            return new ManagedIdentityCredential(configuration.AzureClientId);
-        }
-        
-        if (options is not null)
-        {
-            return new ManagedIdentityCredential(options);
-        }
-        
-        return new ManagedIdentityCredential();
+
+        return new ManagedIdentityCredential(options);
     }
 
     private TokenCredential CreateWorkloadIdentityCredential(AzureKeyVaultSignConfigurationSet configuration, Uri? authorityHost)
