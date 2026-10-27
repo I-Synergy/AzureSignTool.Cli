@@ -31,3 +31,8 @@ __pycache__/
 .github/agents/
 .reasonix/skills/
 .reasonix/agents/
+
+# Junction fixtures created by the template test suite
+.ai/tests/.claude/
+.ai/tests/.github/
+.ai/tests/.reasonix/
