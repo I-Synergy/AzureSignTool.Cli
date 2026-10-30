@@ -413,7 +413,7 @@ It replaced the former Azure DevOps pipeline.
 | Job | Runner | What it does |
 |:----|:-------|:-------------|
 | `build` | `ubuntu-latest` | restore → build → pack → verify the package → test with opencover coverage → upload `nupkgs` and `test-results` |
-| `release` | `windows-2025` | sign the packages with the `AzureSignTool` built by the `build` job, through Azure Key Vault (OIDC) — the NuGet signature plus an Authenticode signature on our own assemblies inside the package (`--sign-nuget-contents-filter "AzureSignTool*"`) — push to nuget.org (trusted publishing). A push to `main` publishes a release through the `production` environment and creates the `v<version>` tag + GitHub release; a pull request from this repository publishes a `-preview` package through the `acceptance` environment and creates no tag |
+| `release` | `windows-2025` | sign the packages with the `AzureSignTool` built by the `build` job, through Azure Key Vault (OIDC) — the NuGet signature plus an Authenticode signature on our own assemblies inside the package (`--sign-nuget-contents-filter "AzureSignTool*"`) — push to nuget.org (trusted publishing). A push to `main` publishes a release through the `production` environment and creates the `<version>` tag + GitHub release; a pull request from this repository publishes a `-preview` package through the `acceptance` environment and creates no tag |
 
 Build and tests are platform-neutral; only the native signing path is Windows-bound
 (`mssign32`/`crypt32`). The two test classes that exercise it —
@@ -421,9 +421,10 @@ Build and tests are platform-neutral; only the native signing path is Windows-bo
 `[OSCondition(OperatingSystems.Windows)]` and are skipped on Linux. The `release` job stays on
 Windows because the tool itself refuses to run elsewhere.
 
-Versions come from the workflow clock as `yyyy.1MMdd.1HHmm` (`2026.11027.11034`); pull requests
-get a `-preview` package suffix (`2026.11027.11034-preview`). Fork PRs never publish — they get no
-secrets — so only branches in this repository can produce a preview.
+Versions come from the workflow clock in UTC as `yyyy.1MMdd.1HHmm` (`2026.11027.11034`); pull
+requests get a `-preview` package suffix (`2026.11027.11034-preview`). No file is bumped for a
+release: the tag and GitHub release use the build number directly (no `v` prefix). Fork PRs never
+publish — they get no secrets — so only branches in this repository can produce a preview.
 
 ### 🔐 Repository configuration
 

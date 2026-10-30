@@ -13,8 +13,8 @@
     <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="10.0.14" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
     <PackageVersion Include="System.CommandLine" Version="2.0.14" />
-    <PackageVersion Include="MSTest.TestAdapter" Version="4.5.1" />
-    <PackageVersion Include="MSTest.TestFramework" Version="4.5.1" />
+    <PackageVersion Include="MSTest.TestAdapter" Version="4.5.2" />
+    <PackageVersion Include="MSTest.TestFramework" Version="4.5.2" />
     <PackageVersion Include="System.IO.Packaging" Version="10.0.2" />
     <PackageVersion Include="NuGet.Packaging" Version="7.9.0" />
     <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="10.0.14" />

@@ -1,6 +1,7 @@
 using AzureSignTool.Core.Abstractions.Services;
 using Microsoft.Extensions.FileSystemGlobbing;
 using Microsoft.Extensions.Logging;
+using System.Diagnostics.CodeAnalysis;
 using System.IO.Compression;
 using System.Security.Cryptography;
 
@@ -98,6 +99,7 @@ public class NuGetPackageSigner
     /// <param name="contentsFilter">Optional glob pattern to filter which files to sign (e.g., "ISynergy.Framework.*"). If null, all signable files are signed.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>HRESULT indicating success or failure</returns>
+    [SuppressMessage("Major Code Smell", "S107:Methods should not have too many parameters", Justification = "Public API mirrors the CLI options and is kept for compatibility.")]
     public async Task<int> SignPackageAsync(
         string packagePath,
         string? description,
@@ -117,141 +119,25 @@ public class NuGetPackageSigner
         }
 
         var tempDir = Path.Combine(Path.GetTempPath(), $"nuget_sign_{Guid.NewGuid():N}");
+        var contentOptions = new PackageContentSigningOptions(description, descriptionUrl, pageHashing, appendSignature, contentsFilter);
 
         try
         {
-            // Only extract and sign contents if signContents is true
             if (signContents)
             {
-                Directory.CreateDirectory(tempDir);
-                _logger?.LogTrace("Created temporary directory: {TempDir}", tempDir);
-
-                // Extract the package
-                _logger?.LogTrace("Extracting package contents");
-                ZipFile.ExtractToDirectory(packagePath, tempDir);
-
-                // Find all signable files
-                var allSignableFiles = Directory.GetFiles(tempDir, "*.*", SearchOption.AllDirectories)
-                    .Where(IsSignableFile)
-                    .ToList();
-
-                // Apply filter if specified
-                List<string> filesToSign;
-                if (!string.IsNullOrWhiteSpace(contentsFilter))
+                var contentResult = await SignContentsAsync(packagePath, tempDir, contentOptions, cancellationToken)
+                    .ConfigureAwait(false);
+                if (contentResult != 0)
                 {
-                    _logger?.LogInformation("Applying content filter: {Filter}", contentsFilter);
-                    filesToSign = allSignableFiles
-                        .Where(f => MatchesFilter(Path.GetFileName(f), contentsFilter))
-                        .ToList();
-
-                    var skippedCount = allSignableFiles.Count - filesToSign.Count;
-                    if (skippedCount > 0)
-                    {
-                        _logger?.LogInformation("Skipping {Count} file(s) not matching filter", skippedCount);
-                    }
+                    return contentResult;
                 }
-                else
-                {
-                    filesToSign = allSignableFiles;
-                }
-
-                if (filesToSign.Count == 0)
-                {
-                    _logger?.LogInformation("No signable files found in package{FilterNote}",
-                        !string.IsNullOrWhiteSpace(contentsFilter) ? " matching filter" : "");
-                }
-                else
-                {
-                    _logger?.LogInformation("Signing {Count} file(s) in package", filesToSign.Count);
-
-                    foreach (var file in filesToSign)
-                    {
-                        cancellationToken.ThrowIfCancellationRequested();
-
-                        _logger?.LogTrace("Signing file: {File}", Path.GetFileName(file));
-                        var result = _codeSigningService.SignFile(
-                            file,
-                            description ?? string.Empty,
-                            descriptionUrl ?? string.Empty,
-                            pageHashing,
-                            _logger,
-                            appendSignature);
-
-                        if (result != 0) // S_OK = 0
-                        {
-                            _logger?.LogError("Failed to sign file {File} with result {Result:X8}", Path.GetFileName(file), result);
-                            return result;
-                        }
-                    }
-                }
-
-                // Repackage the files
-                _logger?.LogTrace("Repackaging signed contents");
-                var tempPackagePath = $"{packagePath}.tmp";
-
-                // Delete temp package if it exists
-                if (File.Exists(tempPackagePath))
-                {
-                    File.Delete(tempPackagePath);
-                }
-
-                // Create new package with signed files, using the original compression level
-                using (var originalArchive = ZipFile.OpenRead(packagePath))
-                {
-                    using var newArchive = ZipFile.Open(tempPackagePath, ZipArchiveMode.Create);
-
-                    // Copy all entries from temp directory, preserving structure
-                    foreach (var filePath in Directory.GetFiles(tempDir, "*", SearchOption.AllDirectories))
-                    {
-                        var entryName = Path.GetRelativePath(tempDir, filePath).Replace('\\', '/');
-                        newArchive.CreateEntryFromFile(filePath, entryName, CompressionLevel.Optimal);
-                    }
-                }
-
-                // Replace original package with signed package
-                File.Delete(packagePath);
-                File.Move(tempPackagePath, packagePath);
-
-                _logger?.LogInformation("Successfully signed binaries in NuGet package");
             }
             else
             {
                 _logger?.LogTrace("Skipping content signing (--sign-nuget-contents not specified)");
             }
 
-            // Now sign the package itself if NuGet signature service is available
-            if (_nugetSignatureService is not null)
-            {
-                // Only sign .nupkg files with NuGet signature, not .snupkg (symbol packages don't get NuGet signatures)
-                if (packagePath.EndsWith(".nupkg", StringComparison.OrdinalIgnoreCase))
-                {
-                    _logger?.LogInformation("Creating NuGet package signature");
-                    var signResult = await _nugetSignatureService.SignPackageAsync(
-                        packagePath,
-                        packagePath,
-                        _timestampUrl,
-                        _hashAlgorithm,
-                        cancellationToken);
-
-                    if (signResult != 0)
-                    {
-                        _logger?.LogError("Failed to create NuGet package signature with result {Result:X8}", signResult);
-                        return signResult;
-                    }
-
-                    _logger?.LogInformation("NuGet package signature created successfully");
-                }
-                else
-                {
-                    _logger?.LogTrace("Skipping NuGet package signature for symbol package (.snupkg)");
-                }
-            }
-            else
-            {
-                _logger?.LogTrace("NuGet package signature service not configured, skipping package signature");
-            }
-
-            return 0; // S_OK
+            return await SignPackageSignatureAsync(packagePath, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -265,19 +151,166 @@ public class NuGetPackageSigner
         }
         finally
         {
-            // Cleanup temporary directory
-            try
+            CleanupTemporaryDirectory(tempDir);
+        }
+    }
+
+    private async Task<int> SignContentsAsync(
+        string packagePath,
+        string tempDir,
+        PackageContentSigningOptions contentOptions,
+        CancellationToken cancellationToken)
+    {
+        Directory.CreateDirectory(tempDir);
+        _logger?.LogTrace("Created temporary directory: {TempDir}", tempDir);
+
+        _logger?.LogTrace("Extracting package contents");
+        await ZipFile.ExtractToDirectoryAsync(packagePath, tempDir, cancellationToken).ConfigureAwait(false);
+
+        var allSignableFiles = Directory.GetFiles(tempDir, "*.*", SearchOption.AllDirectories)
+            .Where(IsSignableFile)
+            .ToList();
+
+        var filesToSign = GetFilesToSign(allSignableFiles, contentOptions.ContentsFilter);
+        if (filesToSign.Count == 0)
+        {
+            _logger?.LogInformation("No signable files found in package{FilterNote}",
+                !string.IsNullOrWhiteSpace(contentOptions.ContentsFilter) ? " matching filter" : "");
+            return 0;
+        }
+
+        _logger?.LogInformation("Signing {Count} file(s) in package", filesToSign.Count);
+        var signResult = await SignEmbeddedFilesAsync(filesToSign, contentOptions, cancellationToken)
+            .ConfigureAwait(false);
+        if (signResult != 0)
+        {
+            return signResult;
+        }
+
+        _logger?.LogTrace("Repackaging signed contents");
+        await RepackageAsync(packagePath, tempDir, cancellationToken).ConfigureAwait(false);
+        _logger?.LogInformation("Successfully signed binaries in NuGet package");
+
+        return 0;
+    }
+
+    private List<string> GetFilesToSign(List<string> allSignableFiles, string? contentsFilter)
+    {
+        if (string.IsNullOrWhiteSpace(contentsFilter))
+        {
+            return allSignableFiles;
+        }
+
+        _logger?.LogInformation("Applying content filter: {Filter}", contentsFilter);
+        var filesToSign = allSignableFiles
+            .Where(file => MatchesFilter(Path.GetFileName(file), contentsFilter))
+            .ToList();
+
+        var skippedCount = allSignableFiles.Count - filesToSign.Count;
+        if (skippedCount > 0)
+        {
+            _logger?.LogInformation("Skipping {Count} file(s) not matching filter", skippedCount);
+        }
+
+        return filesToSign;
+    }
+
+    private async Task<int> SignEmbeddedFilesAsync(
+        IEnumerable<string> filesToSign,
+        PackageContentSigningOptions contentOptions,
+        CancellationToken cancellationToken)
+    {
+        foreach (var file in filesToSign)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            _logger?.LogTrace("Signing file: {File}", Path.GetFileName(file));
+            var result = _codeSigningService.SignFile(
+                file,
+                contentOptions.Description ?? string.Empty,
+                contentOptions.DescriptionUrl ?? string.Empty,
+                contentOptions.PageHashing,
+                _logger,
+                contentOptions.AppendSignature);
+
+            if (result != 0) // S_OK = 0
             {
-                if (Directory.Exists(tempDir))
-                {
-                    Directory.Delete(tempDir, true);
-                    _logger?.LogTrace("Cleaned up temporary directory");
-                }
+                _logger?.LogError("Failed to sign file {File} with result {Result:X8}", Path.GetFileName(file), result);
+                return result;
             }
-            catch (Exception ex)
+        }
+
+        return 0;
+    }
+
+    private static async Task RepackageAsync(string packagePath, string tempDir, CancellationToken cancellationToken)
+    {
+        var tempPackagePath = $"{packagePath}.tmp";
+        if (File.Exists(tempPackagePath))
+        {
+            File.Delete(tempPackagePath);
+        }
+
+        await using (var newArchive = await ZipFile.OpenAsync(tempPackagePath, ZipArchiveMode.Create, cancellationToken)
+            .ConfigureAwait(false))
+        {
+            foreach (var filePath in Directory.GetFiles(tempDir, "*", SearchOption.AllDirectories))
             {
-                _logger?.LogWarning(ex, "Failed to clean up temporary directory: {TempDir}", tempDir);
+                var entryName = Path.GetRelativePath(tempDir, filePath).Replace('\\', '/');
+                await newArchive.CreateEntryFromFileAsync(filePath, entryName, CompressionLevel.Optimal, cancellationToken)
+                    .ConfigureAwait(false);
             }
+        }
+
+        File.Delete(packagePath);
+        File.Move(tempPackagePath, packagePath);
+    }
+
+    private async Task<int> SignPackageSignatureAsync(string packagePath, CancellationToken cancellationToken)
+    {
+        if (_nugetSignatureService is null)
+        {
+            _logger?.LogTrace("NuGet package signature service not configured, skipping package signature");
+            return 0;
+        }
+
+        if (!packagePath.EndsWith(".nupkg", StringComparison.OrdinalIgnoreCase))
+        {
+            _logger?.LogTrace("Skipping NuGet package signature for symbol package (.snupkg)");
+            return 0;
+        }
+
+        _logger?.LogInformation("Creating NuGet package signature");
+        var signResult = await _nugetSignatureService.SignPackageAsync(
+            packagePath,
+            packagePath,
+            _timestampUrl,
+            _hashAlgorithm,
+            cancellationToken).ConfigureAwait(false);
+
+        if (signResult != 0)
+        {
+            _logger?.LogError("Failed to create NuGet package signature with result {Result:X8}", signResult);
+            return signResult;
+        }
+
+        _logger?.LogInformation("NuGet package signature created successfully");
+        return 0;
+    }
+
+    private void CleanupTemporaryDirectory(string tempDir)
+    {
+        try
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, true);
+                _logger?.LogTrace("Cleaned up temporary directory");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Failed to clean up temporary directory: {TempDir}", tempDir);
         }
     }
 
@@ -312,4 +345,11 @@ public class NuGetPackageSigner
         return extension.Equals(".nupkg", StringComparison.OrdinalIgnoreCase) ||
                extension.Equals(".snupkg", StringComparison.OrdinalIgnoreCase);
     }
+
+    private sealed record PackageContentSigningOptions(
+        string? Description,
+        string? DescriptionUrl,
+        bool? PageHashing,
+        bool AppendSignature,
+        string? ContentsFilter);
 }

@@ -1,5 +1,9 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace AzureSignTool.Core.Enumerations;
 
+[SuppressMessage("Minor Code Smell", "S2344:Enumeration type names should not have \"Flags\" or \"Enum\" suffixes", Justification = "Name mirrors the native SIGNER_SIGN_EX3 flags.")]
+[SuppressMessage("Critical Code Smell", "S2346:Flags enumerations zero-valued members should be named \"None\"", Justification = "NONE mirrors the native Win32 constant.")]
 [type: Flags]
 internal enum SignerSignEx3Flags : uint
 {

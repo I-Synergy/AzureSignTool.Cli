@@ -161,21 +161,18 @@ public class NuGetPackageSignatureServiceTests
         // Note: The actual behavior depends on when cancellation is checked
         try
         {
-            await service.SignPackageAsync(
+            var result = await service.SignPackageAsync(
                 packagePath,
                 Path.Combine(_testDirectory, "output.nupkg"),
                 null,
                 HashAlgorithmName.SHA256,
                 cts.Token);
+
+            Assert.AreNotEqual(0, result, "A cancelled signing operation should not report success.");
         }
         catch (OperationCanceledException)
         {
-            // Expected
-            return;
-        }
-        catch (Exception)
-        {
-            // Other exceptions are acceptable for self-signed certs
+            Assert.IsTrue(cts.IsCancellationRequested, "The cancellation token should be cancelled.");
         }
     }
 
@@ -186,8 +183,19 @@ public class NuGetPackageSignatureServiceTests
         using var cert = CreateSelfSignedCertificateWithKey(rsa);
 
         var service = new NuGetPackageSignatureService(rsa, cert);
-        service.Dispose();
-        service.Dispose(); // Should not throw
+        var threw = false;
+
+        try
+        {
+            service.Dispose();
+            service.Dispose();
+        }
+        catch (Exception)
+        {
+            threw = true;
+        }
+
+        Assert.IsFalse(threw, "Dispose should be safe to call more than once.");
     }
 
     [TestMethod]

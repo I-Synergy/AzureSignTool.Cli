@@ -1,5 +1,8 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace AzureSignTool.Core.Enumerations;
 
+[SuppressMessage("Minor Code Smell", "S2344:Enumeration type names should not have \"Flags\" or \"Enum\" suffixes", Justification = "Name mirrors the native SIGNER_CERT_STORE_INFO flags.")]
 [type: Flags]
 internal enum SignerCertStoreInfoFlags
 {

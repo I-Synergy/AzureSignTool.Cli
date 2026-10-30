@@ -13,7 +13,7 @@ $parts = $BuildNumber.Split('.')
 $versionMajor = $parts[0]    # yyyy
 $versionMinor = $parts[1]    # 1MMdd
 $versionRevision = $parts[2] # 1HHmm
-$versionBuild = if ($BuildReason -eq 'PullRequest') { (Get-Date).Second } else { 0 }
+$versionBuild = if ($BuildReason -eq 'PullRequest') { '{0:D2}' -f (Get-Date).Second } else { 0 }
 
 $versionNumber = "$versionMajor.$versionMinor.$versionRevision.$versionBuild"
 $versionInformational = "$versionMajor.$versionMinor.$versionRevision"

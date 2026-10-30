@@ -184,3 +184,39 @@ Applied through the GitHub REST API (token from Git Credential Manager) and `az`
 - `Validate Claude Template` still fails, only at `validate-standards.py`: row
   ISO/IEC/IEEE 29119-3:2021 declares `Evidence`, the project produces none of the
   `docs/slices/*` test plans or `docs/test-reports/*`. All other 10 suites pass locally.
+
+## SonarCloud cleanup (2026-10-30, Reasonix Code)
+
+- Baseline: 1306 open issues at revision `f29f95c` — 1204 under `.ai/**` and 102 in
+  product/CI/scripts. Product duplication: one block in `SipExtensionFactory.cs` (64.2%).
+- Added `.sonarcloud.properties` excluding `.ai/**` and build output from SonarCloud
+  analysis; this is the agreed treatment for template skills, examples and vendored Hugo
+  themes rather than rewriting 1204 findings in non-shipped assets.
+- Fixed the 102 project findings across `SignCommand`, `AzureKeyVaultConfigurationDiscoverer`,
+  `Program`, `ErrorOr`, `CodeSigningService`, `NuGetPackageSignatureService`,
+  `NuGetPackageSigner`, `MemoryCertificateStore`, CI workflows and PowerShell scripts.
+- Win32 interop names (`HRESULT`, `crypt32`, `mssign32`, native structs/enums) and unsafe
+  blocks are retained and suppressed with justifications, per user decision; no public API
+  rename was made.
+- `SipExtensionFactory` now uses extension sets, removing its duplicated branches.
+- Verification: Release build 0 warnings/0 errors; 52 CLI + 87 Core tests pass; both
+  PowerShell scripts parse; `git diff --check` clean.
+- Not committed or pushed. The next SonarCloud automatic analysis on push will confirm the
+  dashboard. `Directory.Packages.props` still carries the pre-existing MSTest 4.5.2 bump.
+- Record: `.ai/completed/sonarcloud-cleanup.md`; plan: `.ai/plans/sonarcloud-cleanup.md`.
+
+## Automatic release versioning aligned with AI (2026-10-30, Reasonix Code)
+
+- Adopted the `I-Synergy/AI` release scheme: build number `YYYY.1MMdd.1HHmm` in UTC, tag and
+  GitHub release use that number directly (no `v` prefix), and no project file is bumped.
+- `.github/workflows/ci.yml` now accepts an optional `workflow_dispatch` `build_number`,
+  validates the format, and skips tag/release creation when the tag already exists.
+- `scripts/New-GitTag.ps1` no longer prefixes `v`; `Set-VersionVariables.ps1` pads PR build
+  seconds to two digits (matching the AI workflow).
+- Removed `Version`, `AssemblyVersion`, and `FileVersion` pins from `Directory.Build.props`;
+  CI remains the single source of truth and passes all version properties to build/pack.
+- Updated both READMEs to document the unprefixed tag and no-bump behaviour.
+- Verification: merge version `2026.11030.12345.0`, PR preview `...36-preview`; versionless and
+  CI-versioned Release builds succeed; 52 CLI + 87 Core tests pass; workflow YAML and PowerShell
+  parse; `git diff --check` clean.
+- Record: `.ai/completed/release-versioning.md`; plan: `.ai/plans/release-versioning.md`.

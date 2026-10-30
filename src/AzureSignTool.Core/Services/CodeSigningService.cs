@@ -10,12 +10,15 @@ using AzureSignTool.Core.Structures;
 using AzureSignTool.Core.Translators;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 
 namespace AzureSignTool.Core.Services;
 
+[SuppressMessage("Major Vulnerability", "S6640:Using unsafe code blocks is security-sensitive", Justification = "Required to marshal the native SignerSignEx3 structures.")]
+[SuppressMessage("Critical Vulnerability", "S5542:Encryption algorithms should be used with secure mode and padding scheme", Justification = "Authenticode requires PKCS#1 v1.5 padding.")]
 public class CodeSigningService : ICodeSigningService
 {
     private readonly AsymmetricAlgorithm _signingAlgorithm;
@@ -25,6 +28,7 @@ public class CodeSigningService : ICodeSigningService
     private readonly ICertificateStore _certificateStore;
     private readonly X509Chain _chain;
     private readonly SignCallback _signCallback;
+    private bool _disposed;
 
 
     /// <summary>
@@ -190,7 +194,7 @@ public class CodeSigningService : ICodeSigningService
                     break;
             }
 
-            logger?.LogTrace($"Calling SignerSignEx3 with flags: {flags}");
+            logger?.LogTrace("Calling SignerSignEx3 with flags: {Flags}", flags);
             var result = mssign32.SignerSignEx3
             (
                 flags,
@@ -229,8 +233,27 @@ public class CodeSigningService : ICodeSigningService
     /// </summary>
     public void Dispose()
     {
-        _chain.Dispose();
-        _certificateStore.Close();
+        Dispose(true);
+    }
+
+    /// <summary>
+    /// Releases the resources used by the service.
+    /// </summary>
+    /// <param name="disposing">True when called from <see cref="Dispose()"/>.</param>
+    protected virtual void Dispose(bool disposing)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        if (disposing)
+        {
+            _chain.Dispose();
+            _certificateStore.Dispose();
+        }
+
+        _disposed = true;
     }
 
     private unsafe int SignCallback(
@@ -262,6 +285,7 @@ public class CodeSigningService : ICodeSigningService
         return 0;
     }
 
+    [SuppressMessage("Major Code Smell", "S107:Methods should not have too many parameters", Justification = "Arguments mirror the native SignerSignEx3 parameter block.")]
     private static unsafe void FillAppxExtension(
         ref APPX_SIP_CLIENT_DATA clientData,
         SignerSignEx3Flags flags,

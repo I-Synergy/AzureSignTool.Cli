@@ -10,6 +10,7 @@ internal sealed class MemoryCertificateStore : ICertificateStore
 {
     private IntPtr _handle;
     private readonly X509Store _store;
+    private bool _disposed;
 
     private MemoryCertificateStore(IntPtr handle)
     {
@@ -39,18 +40,26 @@ internal sealed class MemoryCertificateStore : ICertificateStore
         return new MemoryCertificateStore(handle);
     }
 
-    public void Close() => Dispose(true);
-    void IDisposable.Dispose() => Dispose(true);
+    public void Close() => Dispose();
     ~MemoryCertificateStore() => Dispose(false);
 
-    public IntPtr Handle => _store.StoreHandle;
+    public IntPtr Handle => _handle;
     public void Add(X509Certificate2 certificate) => _store.Add(certificate);
     public void Add(X509Certificate2Collection collection) => _store.AddRange(collection);
     public X509Certificate2Collection Certificates => _store.Certificates;
 
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
     private void Dispose(bool disposing)
     {
-        GC.SuppressFinalize(this);
+        if (_disposed)
+        {
+            return;
+        }
 
         if (disposing)
         {
@@ -58,6 +67,7 @@ internal sealed class MemoryCertificateStore : ICertificateStore
         }
 
         FreeHandle();
+        _disposed = true;
     }
 
     private void FreeHandle()
