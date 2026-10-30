@@ -2,6 +2,13 @@
 
 [![CI](https://github.com/I-Synergy/AzureSignTool.Cli/actions/workflows/ci.yml/badge.svg)](https://github.com/I-Synergy/AzureSignTool.Cli/actions/workflows/ci.yml)
 
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=I-Synergy_AzureSignTool.Cli&metric=alert_status)](https://sonarcloud.io/dashboard?id=I-Synergy_AzureSignTool.Cli)
+[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=I-Synergy_AzureSignTool.Cli&metric=bugs)](https://sonarcloud.io/dashboard?id=I-Synergy_AzureSignTool.Cli)
+[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=I-Synergy_AzureSignTool.Cli&metric=code_smells)](https://sonarcloud.io/dashboard?id=I-Synergy_AzureSignTool.Cli)
+[![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=I-Synergy_AzureSignTool.Cli&metric=vulnerabilities)](https://sonarcloud.io/dashboard?id=I-Synergy_AzureSignTool.Cli)
+[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=I-Synergy_AzureSignTool.Cli&metric=security_rating)](https://sonarcloud.io/dashboard?id=I-Synergy_AzureSignTool.Cli)
+[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=I-Synergy_AzureSignTool.Cli&metric=sqale_rating)](https://sonarcloud.io/dashboard?id=I-Synergy_AzureSignTool.Cli)
+
 A code signing tool that uses **Azure Key Vault** for performing the signing process. Similar to `signtool` in the Windows SDK, but leverages Azure Key Vault certificates for secure, centralized key management.
 
 > 📦 Based on [AzureSignTool](https://github.com/vcsjones/AzureSignTool) by Kevin Jones.

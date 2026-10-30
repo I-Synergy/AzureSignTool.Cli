@@ -223,4 +223,6 @@ Applied through the GitHub REST API (token from Git Credential Manager) and `az`
 - Committed as `2f4b944` on `development/main`; PR #2 targets `main`.
 - PR #2 follow-up: removed the nested ternary flagged by `csharpsquid:S3358` in
   `SignCommand`; Release build and all 139 tests pass.
+- Both READMEs now carry the six SonarCloud badges (quality gate, bugs, code smells,
+  vulnerabilities, security rating, maintainability rating).
 - Record: `.ai/completed/release-versioning.md`; plan: `.ai/plans/release-versioning.md`.
