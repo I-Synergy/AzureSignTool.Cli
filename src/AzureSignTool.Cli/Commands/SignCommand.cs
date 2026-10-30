@@ -382,11 +382,15 @@ internal static class SignCommand
         ILogger logger,
         CancellationToken cancellationToken)
     {
-        bool? performPageHashing = options.PageHashing
-            ? true
-            : options.NoPageHashing
-                ? false
-                : null;
+        bool? performPageHashing = null;
+        if (options.PageHashing)
+        {
+            performPageHashing = true;
+        }
+        else if (options.NoPageHashing)
+        {
+            performPageHashing = false;
+        }
 
         using var cancellationSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         ConsoleCancelEventHandler cancelHandler = (_, e) =>

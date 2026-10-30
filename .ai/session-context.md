@@ -221,4 +221,6 @@ Applied through the GitHub REST API (token from Git Credential Manager) and `az`
   CI-versioned Release builds succeed; 52 CLI + 87 Core tests pass; workflow YAML and PowerShell
   parse; `git diff --check` clean.
 - Committed as `2f4b944` on `development/main`; PR #2 targets `main`.
+- PR #2 follow-up: removed the nested ternary flagged by `csharpsquid:S3358` in
+  `SignCommand`; Release build and all 139 tests pass.
 - Record: `.ai/completed/release-versioning.md`; plan: `.ai/plans/release-versioning.md`.
