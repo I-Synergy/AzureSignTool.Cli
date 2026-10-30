@@ -201,8 +201,9 @@ Applied through the GitHub REST API (token from Git Credential Manager) and `az`
 - `SipExtensionFactory` now uses extension sets, removing its duplicated branches.
 - Verification: Release build 0 warnings/0 errors; 52 CLI + 87 Core tests pass; both
   PowerShell scripts parse; `git diff --check` clean.
-- Not committed or pushed. The next SonarCloud automatic analysis on push will confirm the
-  dashboard. `Directory.Packages.props` still carries the pre-existing MSTest 4.5.2 bump.
+- The next SonarCloud automatic analysis on push will confirm the dashboard.
+  `Directory.Packages.props` still carries the pre-existing MSTest 4.5.2 bump.
+- Committed as `2f4b944` on `development/main`; PR #2 targets `main`.
 - Record: `.ai/completed/sonarcloud-cleanup.md`; plan: `.ai/plans/sonarcloud-cleanup.md`.
 
 ## Automatic release versioning aligned with AI (2026-10-30, Reasonix Code)
@@ -219,4 +220,5 @@ Applied through the GitHub REST API (token from Git Credential Manager) and `az`
 - Verification: merge version `2026.11030.12345.0`, PR preview `...36-preview`; versionless and
   CI-versioned Release builds succeed; 52 CLI + 87 Core tests pass; workflow YAML and PowerShell
   parse; `git diff --check` clean.
+- Committed as `2f4b944` on `development/main`; PR #2 targets `main`.
 - Record: `.ai/completed/release-versioning.md`; plan: `.ai/plans/release-versioning.md`.
