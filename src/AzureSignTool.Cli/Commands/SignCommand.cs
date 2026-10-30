@@ -878,7 +878,7 @@ internal static class SignCommand
                     case X509ContentType.Authenticode:
                     case X509ContentType.SerializedCert:
                         var certificate = X509CertificateLoader.LoadCertificateFromFile(path);
-                        logger.LogTrace("Including additional certificate {thumbprint}.", certificate.Thumbprint);
+                        logger.LogTrace("Including additional certificate {Thumbprint}.", certificate.Thumbprint);
                         collection.Add(certificate);
                         break;
                     default:

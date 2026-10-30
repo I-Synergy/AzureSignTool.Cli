@@ -236,3 +236,18 @@ Applied through the GitHub REST API (token from Git Credential Manager) and `az`
   document that PRs are build-only.
 - Reason: the nuget.org trusted-publishing policy is bound to `production`; PR preview publishing
   through `acceptance` failed with an environment mismatch.
+
+## Five new SonarCloud issues fixed (2026-10-30, Reasonix Code)
+
+- Queried `api/issues/search` for `I-Synergy_AzureSignTool.Cli` (new code period, unresolved):
+  2 × `githubactions` vulnerabilities, 3 × `csharpsquid` code smells.
+- `validate-template.yml`: dropped the unpinned `python -m pip install --upgrade pip`
+  line, which triggered both workflow findings (`S8541` no `--only-binary :all:`,
+  `S8544` unlocked dependency). The remaining install already pins versions and uses
+  `--only-binary :all:`.
+- `CodeSigningService.Dispose()` and `NuGetPackageSignatureService.Dispose()` now call
+  `GC.SuppressFinalize(this)` (`S3881`).
+- `SignCommand`: log placeholder `{thumbprint}` → `{Thumbprint}` (`S6678`).
+- Verification: Release build 0 warnings/0 errors; 52 CLI + 87 Core tests pass;
+  `git diff --check` clean. Awaiting the next SonarCloud analysis to confirm zero new issues.
+- Committed as `11559da` on `fix/sonarcloud-five-issues`; PR #3 targets `main`.
