@@ -250,3 +250,4 @@ Applied through the GitHub REST API (token from Git Credential Manager) and `az`
 - `SignCommand`: log placeholder `{thumbprint}` → `{Thumbprint}` (`S6678`).
 - Verification: Release build 0 warnings/0 errors; 52 CLI + 87 Core tests pass;
   `git diff --check` clean. Awaiting the next SonarCloud analysis to confirm zero new issues.
+- Committed as `11559da` on `fix/sonarcloud-five-issues`; PR #3 targets `main`.
