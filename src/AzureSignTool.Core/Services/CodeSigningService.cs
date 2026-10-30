@@ -234,6 +234,7 @@ public class CodeSigningService : ICodeSigningService
     public void Dispose()
     {
         Dispose(true);
+        GC.SuppressFinalize(this);
     }
 
     /// <summary>
