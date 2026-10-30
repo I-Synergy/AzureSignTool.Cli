@@ -1,6 +1,10 @@
 # Build, test, pack, sign and publish AzureSignTool.Cli.
 # Replaces azure-pipelines.yml (Azure DevOps); same shape as the I-Synergy.Framework CI.
 #
+# Release versioning follows I-Synergy/AI: the build number is YYYY.1MMdd.1HHmm in UTC, the
+# tag and GitHub release use that number with no `v` prefix, and no file is bumped. A manual
+# workflow_dispatch run accepts an optional build_number; an existing tag is skipped.
+#
 # Repository/environment variables (Settings → Variables), all optional except the release ones:
 #   BUILD_CONFIGURATION       - build configuration (default Release)
 #   AZURE_CLIENT_ID           - service principal/app registration id   (release, OIDC)
@@ -14,11 +18,10 @@
 #
 # Environments (Settings → Environments):
 #   production - approval gate for a release published from `main`
-#   acceptance - NOT gated: a same-repo pull request publishes its signed `-preview` package
-#                directly from CI
-# scripts/Set-GitHubSettings.ps1 creates both and adds required reviewers to `production` only.
-# nuget.org trusted publishing needs one policy per environment, because the policy pins the
-# environment name the publishing job runs in.
+# scripts/Set-GitHubSettings.ps1 creates it and adds required reviewers.
+# nuget.org trusted publishing pins the environment name the publishing job runs in.
+#
+# Pull requests build, test and pack only; they never publish.
 #
 # Create them all at once with: ./scripts/Set-GitHubSettings.ps1
 #
@@ -39,6 +42,11 @@ on:
       - 'docs/**'
       - '**/*.md'
   workflow_dispatch:
+    inputs:
+      build_number:
+        description: 'Build number (YYYY.1MMdd.1HHmm). Leave empty to use the current UTC time.'
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -77,10 +85,19 @@ jobs:
         id: version
         shell: pwsh
         env:
-          BUILD_REASON: ${{ github.event_name == 'pull_request' && 'PullRequest' || 'IndividualCI' }}
+          INPUT_BUILD_NUMBER: ${{ inputs.build_number }}
+          BUILD_REASON: ${{ github.event_name == 'pull_request' && 'PullRequest' || github.event_name == 'workflow_dispatch' && 'Manual' || 'Merge' }}
         run: |
-          $now = Get-Date
-          $buildNumber = '{0}.1{1}.1{2}' -f $now.ToString('yyyy'), $now.ToString('MMdd'), $now.ToString('HHmm')
+          $buildNumber = $env:INPUT_BUILD_NUMBER
+          if ([string]::IsNullOrWhiteSpace($buildNumber)) {
+              $now = [DateTime]::UtcNow
+              $buildNumber = '{0}.1{1}.1{2}' -f $now.ToString('yyyy'), $now.ToString('MMdd'), $now.ToString('HHmm')
+          }
+
+          if ($buildNumber -notmatch '^\d{4}\.1\d{4}\.1\d{4}(\.\d{1,2})?$') {
+              throw "Invalid build number '$buildNumber'. Expected YYYY.1MMdd.1HHmm."
+          }
+
           ./scripts/Set-VersionVariables.ps1 -BuildNumber $buildNumber -BuildReason $env:BUILD_REASON
           Add-Content -Path $env:GITHUB_OUTPUT -Value "buildNumber=$buildNumber"
 
@@ -99,9 +116,8 @@ jobs:
           -p:GeneratePackageOnBuild=false
           -nodeReuse:false
 
-      # Directory.Build.props pins AssemblyVersion/FileVersion to 0.0.0.0 and the Azure Pipelines
-      # Assembly-Info-NetCore task used to overwrite them from the build number. Passing the
-      # properties keeps the assemblies versioned exactly as before.
+      # Directory.Build.props leaves release versions unset; the workflow is the single source of
+      # truth for Version, AssemblyVersion, FileVersion and InformationalVersion.
       - name: Build
         shell: pwsh
         run: >
@@ -190,20 +206,16 @@ jobs:
           retention-days: 30
 
   release:
-    name: Publish ${{ github.event_name == 'pull_request' && 'preview' || 'release' }} packages
+    name: Publish release packages
     needs: build
     # Never cancel a job that may be mid-push to NuGet.org or mid-release: queue instead.
     concurrency:
       group: ci-release-${{ github.ref }}
       cancel-in-progress: false
-    # `main` publishes a release through `production`; a pull request from this repository (not a
-    # fork, which gets no secrets) publishes a signed `-preview` package through `acceptance`.
-    if: >-
-      github.ref == 'refs/heads/main' ||
-      (github.event_name == 'pull_request' &&
-       github.event.pull_request.head.repo.full_name == github.repository)
+    # `main` publishes a release through `production`. Pull requests stop after the build job.
+    if: github.ref == 'refs/heads/main'
     runs-on: windows-2025
-    environment: ${{ github.event_name == 'pull_request' && 'acceptance' || 'production' }}
+    environment: production
     timeout-minutes: 60
     permissions:
       contents: write   # push the release tag
@@ -213,6 +225,21 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+
+      - name: Check release tag
+        id: release_tag
+        shell: pwsh
+        env:
+          BUILD_NUMBER: ${{ needs.build.outputs.buildNumber }}
+        run: |
+          $existing = git ls-remote --tags origin "refs/tags/$env:BUILD_NUMBER"
+          if (-not [string]::IsNullOrWhiteSpace($existing)) {
+            "skip=true" >> $env:GITHUB_OUTPUT
+            Write-Host "::notice::Tag $env:BUILD_NUMBER already exists; skipping tag and release."
+          }
+          else {
+            "skip=false" >> $env:GITHUB_OUTPUT
+          }
 
       # The release job never compiles anything: it only needs a .NET 10 host for the built
       # signing tool and the CLI for `dotnet nuget push`. Asking for 10.0.x lets setup-dotnet
@@ -292,7 +319,7 @@ jobs:
 
       - name: NuGet login (trusted publishing)
         id: nuget
-        uses: NuGet/login@v1
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1
         with:
           user: ${{ secrets.NUGET_USER }}
 
@@ -308,7 +335,7 @@ jobs:
           }
 
       - name: Create git tag
-        if: github.event_name != 'pull_request'
+        if: steps.release_tag.outputs.skip != 'true'
         shell: pwsh
         env:
           BUILD_NUMBER: ${{ needs.build.outputs.buildNumber }}
@@ -321,15 +348,15 @@ jobs:
           -UserName 'github-actions[bot]'
 
       - name: Create GitHub release
-        if: github.event_name != 'pull_request'
+        if: steps.release_tag.outputs.skip != 'true'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
           BUILD_NUMBER: ${{ needs.build.outputs.buildNumber }}
           VERSION_PACKAGE: ${{ needs.build.outputs.versionPackage }}
         run: |
-          gh release create "v$env:BUILD_NUMBER" `
-            --title "v$env:BUILD_NUMBER" `
+          gh release create "$env:BUILD_NUMBER" `
+            --title "$env:BUILD_NUMBER" `
             --notes "NuGet packages published as ``$env:VERSION_PACKAGE``." `
             --generate-notes `
             --verify-tag

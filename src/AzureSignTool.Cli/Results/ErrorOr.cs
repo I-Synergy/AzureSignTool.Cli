@@ -18,7 +18,7 @@ public abstract class ErrorOr<TValue>
         {
         }
 
-        public TValue Value => _value!;
+        public TValue Value => _value ?? throw new InvalidOperationException("The result does not contain a value.");
     }
 
     public class Err : ErrorOr<TValue>
@@ -27,6 +27,6 @@ public abstract class ErrorOr<TValue>
         {
         }
 
-        public Exception Error => _error!;
+        public Exception Error => _error ?? throw new InvalidOperationException("The result does not contain an error.");
     }
 }

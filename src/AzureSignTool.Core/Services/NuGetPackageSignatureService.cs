@@ -18,6 +18,7 @@ public class NuGetPackageSignatureService : INuGetPackageSignatureService
     private readonly RSA _signingAlgorithm;
     private readonly X509Certificate2 _certificate;
     private readonly Microsoft.Extensions.Logging.ILogger? _logger;
+    private bool _disposed;
 
     /// <summary>
     /// Creates a new instance of <see cref="NuGetPackageSignatureService"/>.
@@ -137,7 +138,21 @@ public class NuGetPackageSignatureService : INuGetPackageSignatureService
     /// <inheritdoc/>
     public void Dispose()
     {
-        // Certificate is owned by the caller, don't dispose it here
+        Dispose(true);
+    }
+
+    /// <summary>
+    /// Releases the resources used by the service. The certificate and RSA key are owned by the caller.
+    /// </summary>
+    /// <param name="disposing">True when called from <see cref="Dispose()"/>.</param>
+    protected virtual void Dispose(bool disposing)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
     }
 
     /// <summary>
@@ -225,15 +240,13 @@ public class NuGetPackageSignatureService : INuGetPackageSignatureService
         /// </summary>
         private static AsnEncodedData CreateCommitmentTypeIndicationAttribute()
         {
-            // CommitmentTypeIndication ::= SEQUENCE {
-            //   commitmentTypeId CommitmentTypeIdentifier,
-            //   commitmentTypeQualifier SEQUENCE SIZE (1..MAX) OF CommitmentTypeQualifier OPTIONAL
-            // }
-            // For author signatures, we use proofOfOrigin (1.2.840.113549.1.9.16.6.1)
+            // For author signatures, use proofOfOrigin (1.2.840.113549.1.9.16.6.1).
             var writer = new AsnWriter(AsnEncodingRules.DER);
             using (writer.PushSequence())
             {
-                writer.WriteObjectIdentifier(ProofOfOriginOid.Value!);
+                var proofOfOriginOid = ProofOfOriginOid.Value
+                    ?? throw new InvalidOperationException("The proof-of-origin OID is not available.");
+                writer.WriteObjectIdentifier(proofOfOriginOid);
             }
 
             return new AsnEncodedData(CommitmentTypeIndicationOid, writer.Encode());
@@ -247,20 +260,7 @@ public class NuGetPackageSignatureService : INuGetPackageSignatureService
             X509Certificate2 certificate,
             System.Security.Cryptography.HashAlgorithmName hashAlgorithm)
         {
-            // SigningCertificateV2 ::= SEQUENCE {
-            //   certs SEQUENCE OF ESSCertIDv2,
-            //   policies SEQUENCE OF PolicyInformation OPTIONAL
-            // }
-            // ESSCertIDv2 ::= SEQUENCE {
-            //   hashAlgorithm AlgorithmIdentifier DEFAULT {algorithm id-sha256},
-            //   certHash Hash,
-            //   issuerSerial IssuerSerial OPTIONAL
-            // }
-            // IssuerSerial ::= SEQUENCE {
-            //   issuer GeneralNames,
-            //   serialNumber CertificateSerialNumber
-            // }
-
+            // Build the ESSCertIDv2 attribute that links the signature to the signing certificate.
             // Compute the certificate hash
             byte[] certHash;
             string algorithmOid;
@@ -390,7 +390,7 @@ public class NuGetPackageSignatureService : INuGetPackageSignatureService
     /// <summary>
     /// Adapter to bridge Microsoft.Extensions.Logging to NuGet.Common.ILogger.
     /// </summary>
-    private class NuGetLoggerAdapter : NuGet.Common.ILogger
+    private sealed class NuGetLoggerAdapter : NuGet.Common.ILogger
     {
         private readonly Microsoft.Extensions.Logging.ILogger? _logger;
 

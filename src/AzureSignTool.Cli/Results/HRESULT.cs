@@ -1,5 +1,8 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace AzureSignTool.Cli.Results;
 
+[SuppressMessage("Minor Code Smell", "S101:Types should be named in PascalCase", Justification = "Name mirrors the Win32 HRESULT type.")]
 internal static class HRESULT
 {
     public const int S_OK = 0;

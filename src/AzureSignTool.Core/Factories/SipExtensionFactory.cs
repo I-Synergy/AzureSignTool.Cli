@@ -2,51 +2,40 @@ using AzureSignTool.Core.Enumerations;
 
 namespace AzureSignTool.Core.Factories;
 
-internal class SipExtensionFactory
+internal static class SipExtensionFactory
 {
+    private static readonly HashSet<string> AppxExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".appx",
+        ".eappx",
+        ".appxbundle",
+        ".eappxbundle",
+        ".msix",
+        ".emsix",
+        ".msixbundle",
+        ".emsixbundle"
+    };
+
+    private static readonly HashSet<string> NuGetExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".nupkg",
+        ".snupkg"
+    };
+
     public static SipKind GetSipKind(ReadOnlySpan<char> filePath)
     {
-        var extension = Path.GetExtension(filePath.ToString());
-        if (extension.Equals(".appx", StringComparison.OrdinalIgnoreCase))
+        var extension = Path.GetExtension(filePath).ToString();
+
+        if (AppxExtensions.Contains(extension))
         {
             return SipKind.Appx;
         }
-        if (extension.Equals(".eappx", StringComparison.OrdinalIgnoreCase))
-        {
-            return SipKind.Appx;
-        }
-        if (extension.Equals(".appxbundle", StringComparison.OrdinalIgnoreCase))
-        {
-            return SipKind.Appx;
-        }
-        if (extension.Equals(".eappxbundle", StringComparison.OrdinalIgnoreCase))
-        {
-            return SipKind.Appx;
-        }
-        if (extension.Equals(".msix", StringComparison.OrdinalIgnoreCase))
-        {
-            return SipKind.Appx;
-        }
-        if (extension.Equals(".emsix", StringComparison.OrdinalIgnoreCase))
-        {
-            return SipKind.Appx;
-        }
-        if (extension.Equals(".msixbundle", StringComparison.OrdinalIgnoreCase))
-        {
-            return SipKind.Appx;
-        }
-        if (extension.Equals(".emsixbundle", StringComparison.OrdinalIgnoreCase))
-        {
-            return SipKind.Appx;
-        }
-        if (extension.Equals(".nupkg", StringComparison.OrdinalIgnoreCase))
+
+        if (NuGetExtensions.Contains(extension))
         {
             return SipKind.NuGet;
         }
-        if (extension.Equals(".snupkg", StringComparison.OrdinalIgnoreCase))
-        {
-            return SipKind.NuGet;
-        }
+
         return SipKind.None;
     }
 }

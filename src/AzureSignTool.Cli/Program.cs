@@ -4,7 +4,7 @@ using System.Reflection;
 
 namespace AzureSignTool.Cli;
 
-public class Program
+public static class Program
 {
     public static async Task<int> Main(string[] args)
     {

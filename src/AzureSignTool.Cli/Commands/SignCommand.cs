@@ -18,6 +18,8 @@ namespace AzureSignTool.Cli.Commands;
 
 internal static class SignCommand
 {
+    internal const string DefaultHashAlgorithm = "SHA256";
+
     public static Command Create()
     {
         var command = new Command("sign", "Sign a file.");
@@ -92,13 +94,13 @@ internal static class SignCommand
         Option<string> timestampDigestOption = new("--timestamp-digest", "-td")
         {
             Description = "The digest algorithm used for timestamping.",
-            DefaultValueFactory = _ => "SHA256"
+            DefaultValueFactory = _ => DefaultHashAlgorithm
         };
 
         Option<string> fileDigestOption = new("--file-digest", "-fd")
         {
             Description = "The digest algorithm to hash the file with.",
-            DefaultValueFactory = _ => "SHA256"
+            DefaultValueFactory = _ => DefaultHashAlgorithm
         };
 
         Option<string?> authenticodeTimestampUrlOption = new("--timestamp-authenticode", "-t")
@@ -229,8 +231,8 @@ internal static class SignCommand
                 SignDescription = parseResult.GetValue(descriptionOption),
                 SignDescriptionUrl = parseResult.GetValue(descriptionUrlOption),
                 Rfc3161TimestampUrl = parseResult.GetValue(rfc3161TimestampUrlOption),
-                TimestampDigestAlgorithm = parseResult.GetValue(timestampDigestOption) ?? "SHA256",
-                FileDigestAlgorithm = parseResult.GetValue(fileDigestOption) ?? "SHA256",
+                TimestampDigestAlgorithm = parseResult.GetValue(timestampDigestOption) ?? DefaultHashAlgorithm,
+                FileDigestAlgorithm = parseResult.GetValue(fileDigestOption) ?? DefaultHashAlgorithm,
                 AuthenticodeTimestampUrl = parseResult.GetValue(authenticodeTimestampUrlOption),
                 AdditionalCertificates = parseResult.GetValue(additionalCertificatesOption) ?? [],
                 Verbose = parseResult.GetValue(verboseOption),
@@ -248,18 +250,18 @@ internal static class SignCommand
                 Files = parseResult.GetValue(filesArgument) ?? []
             };
 
-            return await RunSignAsync(options);
+            return await RunSignAsync(options, cancellationToken);
         });
 
         return command;
     }
 
-    private static async Task<int> RunSignAsync(SignOptions options)
+    private static async Task<int> RunSignAsync(SignOptions options, CancellationToken cancellationToken)
     {
         if (!ValidateArguments(options))
         {
-            Console.Error.WriteLine();
-            Console.Error.WriteLine("Use --help for additional information and usage.");
+            await Console.Error.WriteLineAsync().ConfigureAwait(false);
+            await Console.Error.WriteLineAsync("Use --help for additional information and usage.").ConfigureAwait(false);
             return HRESULT.E_INVALIDARG;
         }
 
@@ -267,36 +269,76 @@ internal static class SignCommand
         // itself talks to mssign32/crypt32, so execution is Windows-only.
         if (!OperatingSystem.IsWindows())
         {
-            Console.Error.WriteLine("Azure Sign Tool is only supported on Windows.");
+            await Console.Error.WriteLineAsync("Azure Sign Tool is only supported on Windows.").ConfigureAwait(false);
             return HRESULT.E_PLATFORMNOTSUPPORTED;
         }
 
         if (!OperatingSystem.IsWindowsVersionAtLeast(10))
         {
-            Console.Error.WriteLine("Azure Sign Tool requires Windows 10 or later.");
+            await Console.Error.WriteLineAsync("Azure Sign Tool requires Windows 10 or later.").ConfigureAwait(false);
             return HRESULT.E_PLATFORMNOTSUPPORTED;
         }
 
         using var loggerFactory = LoggerFactory.Create(builder => ConfigureLogging(builder, options));
         var logger = loggerFactory.CreateLogger("SignCommand");
-        X509Certificate2Collection certificates;
-
-        switch (GetAdditionalCertificates(options.AdditionalCertificates, logger))
+        if (!TryGetAdditionalCertificates(options, logger, out var certificates))
         {
-            case ErrorOr<X509Certificate2Collection>.Ok d:
-                certificates = d.Value;
-                break;
-            case ErrorOr<X509Certificate2Collection>.Err err:
-                logger.LogError(err.Error, "{Message}", err.Error.Message);
-                return HRESULT.E_INVALIDARG;
-            default:
-                logger.LogError("Failed to include additional certificates.");
-                return HRESULT.E_INVALIDARG;
+            return HRESULT.E_INVALIDARG;
         }
 
-        var configuration = new AzureKeyVaultSignConfigurationSet
+        var configuration = CreateConfiguration(options);
+        var timeStampConfiguration = CreateTimeStampConfiguration(options, logger);
+        var configurationDiscoverer = new AzureKeyVaultConfigurationDiscoverer(logger);
+        var materializedResult = await configurationDiscoverer.Materialize(configuration).ConfigureAwait(false);
+
+        if (materializedResult is not ErrorOr<AzureKeyVaultMaterializedConfiguration>.Ok ok)
         {
-            AzureKeyVaultUrl = new Uri(options.KeyVaultUrl!),
+            logger.LogError("Failed to get configuration from Azure Key Vault.");
+            return HRESULT.E_INVALIDARG;
+        }
+
+        var materialized = ok.Value;
+        const string RsaOid = "1.2.840.113549.1.1.1";
+        if (materialized.PublicCertificate.GetKeyAlgorithm() is not RsaOid)
+        {
+            logger.LogError("Certificate algorithm is not RSA.");
+            return HRESULT.E_INVALIDARG;
+        }
+
+        return await SignFilesAsync(materialized, options, certificates, timeStampConfiguration, logger, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private static bool TryGetAdditionalCertificates(
+        SignOptions options,
+        ILogger logger,
+        out X509Certificate2Collection certificates)
+    {
+        switch (GetAdditionalCertificates(options.AdditionalCertificates, logger))
+        {
+            case ErrorOr<X509Certificate2Collection>.Ok result:
+                certificates = result.Value;
+                return true;
+            case ErrorOr<X509Certificate2Collection>.Err error:
+                logger.LogError(error.Error, "{Message}", error.Error.Message);
+                break;
+            default:
+                logger.LogError("Failed to include additional certificates.");
+                break;
+        }
+
+        certificates = [];
+        return false;
+    }
+
+    private static AzureKeyVaultSignConfigurationSet CreateConfiguration(SignOptions options)
+    {
+        var keyVaultUrl = options.KeyVaultUrl
+            ?? throw new InvalidOperationException("The Azure Key Vault URL is required.");
+
+        return new AzureKeyVaultSignConfigurationSet
+        {
+            AzureKeyVaultUrl = new Uri(keyVaultUrl),
             AzureKeyVaultCertificateName = options.KeyVaultCertificate,
             AzureKeyVaultCertificateVersion = options.KeyVaultCertificateVersion,
             AzureClientId = options.KeyVaultClientId,
@@ -307,177 +349,196 @@ internal static class SignCommand
             AzureCredentialType = options.AzureCredentialType,
             AzureAuthority = options.AzureAuthority,
         };
+    }
 
-        TimeStampConfiguration timeStampConfiguration;
-
+    private static TimeStampConfiguration CreateTimeStampConfiguration(SignOptions options, ILogger logger)
+    {
         if (options.Rfc3161TimestampUrl is not null)
         {
-            timeStampConfiguration = new TimeStampConfiguration(options.Rfc3161TimestampUrl, ParseHashAlgorithm(options.TimestampDigestAlgorithm), TimeStampType.RFC3161);
-        }
-        else if (options.AuthenticodeTimestampUrl is not null)
-        {
-            logger.LogWarning("Authenticode timestamps should only be used for compatibility purposes. RFC3161 timestamps should be used.");
-            timeStampConfiguration = new TimeStampConfiguration(options.AuthenticodeTimestampUrl, default, TimeStampType.Authenticode);
-        }
-        else
-        {
-            logger.LogWarning("Signatures will not be timestamped. Signatures will become invalid when the signing certificate expires.");
-            timeStampConfiguration = TimeStampConfiguration.None;
+            return new TimeStampConfiguration(
+                options.Rfc3161TimestampUrl,
+                ParseHashAlgorithm(options.TimestampDigestAlgorithm),
+                TimeStampType.RFC3161);
         }
 
+        if (options.AuthenticodeTimestampUrl is not null)
+        {
+            logger.LogWarning("Authenticode timestamps should only be used for compatibility purposes. RFC3161 timestamps should be used.");
+            return new TimeStampConfiguration(
+                options.AuthenticodeTimestampUrl,
+                default,
+                TimeStampType.Authenticode);
+        }
+
+        logger.LogWarning("Signatures will not be timestamped. Signatures will become invalid when the signing certificate expires.");
+        return TimeStampConfiguration.None;
+    }
+
+    private static async Task<int> SignFilesAsync(
+        AzureKeyVaultMaterializedConfiguration materialized,
+        SignOptions options,
+        X509Certificate2Collection certificates,
+        TimeStampConfiguration timeStampConfiguration,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
         bool? performPageHashing = null;
         if (options.PageHashing)
         {
             performPageHashing = true;
         }
-        if (options.NoPageHashing)
+        else if (options.NoPageHashing)
         {
             performPageHashing = false;
         }
 
-        var configurationDiscoverer = new AzureKeyVaultConfigurationDiscoverer(logger);
-        var materializedResult = await configurationDiscoverer.Materialize(configuration);
-        AzureKeyVaultMaterializedConfiguration materialized;
-
-        switch (materializedResult)
-        {
-            case ErrorOr<AzureKeyVaultMaterializedConfiguration>.Ok ok:
-                materialized = ok.Value;
-                break;
-            default:
-                logger.LogError("Failed to get configuration from Azure Key Vault.");
-                return HRESULT.E_INVALIDARG;
-        }
-
-        const string RsaOid = "1.2.840.113549.1.1.1";
-        if (materialized.PublicCertificate.GetKeyAlgorithm() is string alg and not RsaOid)
-        {
-            logger.LogError("Certificate algorithm is not RSA.");
-            return HRESULT.E_INVALIDARG;
-        }
-
-        int failed = 0, succeeded = 0;
-        var cancellationSource = new CancellationTokenSource();
-        Console.CancelKeyPress += (_, e) =>
+        using var cancellationSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        ConsoleCancelEventHandler cancelHandler = (_, e) =>
         {
             e.Cancel = true;
             cancellationSource.Cancel();
             logger.LogInformation("Cancelling signing operations.");
         };
+        Console.CancelKeyPress += cancelHandler;
 
-        var parallelOptions = new ParallelOptions();
-        if (options.MaxDegreeOfParallelism != 0)
+        try
         {
-            parallelOptions.MaxDegreeOfParallelism = options.MaxDegreeOfParallelism;
-        }
-
-        logger.LogTrace("Creating context");
-
-        CryptographyClientOptions clientOptions = new()
-        {
-            Retry =
+            var parallelOptions = new ParallelOptions();
+            if (options.MaxDegreeOfParallelism != 0)
             {
-                Delay = TimeSpan.FromSeconds(2),
-                MaxDelay = TimeSpan.FromSeconds(16),
-                MaxRetries = 5,
-                Mode = global::Azure.Core.RetryMode.Exponential
+                parallelOptions.MaxDegreeOfParallelism = options.MaxDegreeOfParallelism;
             }
-        };
 
-        var client = new CryptographyClient(materialized.KeyId, materialized.TokenCredential, clientOptions);
-        var allFiles = GetAllFiles(options);
+            logger.LogTrace("Creating context");
 
-        using (var keyVault = await client.CreateRSAAsync())
-        using (var signer = new CodeSigningService(keyVault, materialized.PublicCertificate, ParseHashAlgorithm(options.FileDigestAlgorithm), timeStampConfiguration, certificates))
-        using (INuGetPackageSignatureService? nugetSignatureService = CreateNuGetSignatureService(keyVault, materialized.PublicCertificate, logger))
-        {
-            var nugetSigner = new NuGetPackageSigner(
-                signer,
-                nugetSignatureService,
-                options.Rfc3161TimestampUrl,
-                ParseHashAlgorithm(options.FileDigestAlgorithm),
-                logger);
-
-            Parallel.ForEach(allFiles, parallelOptions, () => (succeeded: 0, failed: 0), (filePath, pls, state) =>
+            CryptographyClientOptions clientOptions = new()
             {
-                if (cancellationSource.IsCancellationRequested)
+                Retry =
                 {
-                    pls.Stop();
+                    Delay = TimeSpan.FromSeconds(2),
+                    MaxDelay = TimeSpan.FromSeconds(16),
+                    MaxRetries = 5,
+                    Mode = global::Azure.Core.RetryMode.Exponential
                 }
-                if (pls.IsStopped)
-                {
-                    return state;
-                }
-                using (logger.BeginScope("File: {Id}", filePath))
-                {
-                    logger.LogInformation("Signing file.");
+            };
 
-                    if (options.SkipSignedFiles && IsSigned(filePath))
-                    {
-                        logger.LogInformation("Skipping already signed file.");
-                        return (state.succeeded + 1, state.failed);
-                    }
+            var client = new CryptographyClient(materialized.KeyId, materialized.TokenCredential, clientOptions);
+            var allFiles = GetAllFiles(options);
+            int failed = 0, succeeded = 0;
 
-                    int result;
-
-                    // Check if this is a NuGet package
-                    if (NuGetPackageSigner.IsNuGetPackage(filePath))
-                    {
-                        result = nugetSigner.SignPackage(filePath, options.SignDescription, options.SignDescriptionUrl, performPageHashing, options.AppendSignature, options.SignNuGetContents, options.SignNuGetContentsFilter);
-                    }
-                    else
-                    {
-                        result = signer.SignFile(filePath, options.SignDescription, options.SignDescriptionUrl, performPageHashing, logger, options.AppendSignature);
-                    }
-
-                    switch (result)
-                    {
-                        case HRESULT.COR_E_BADIMAGEFORMAT:
-                            logger.LogError("The Publisher Identity in the AppxManifest.xml does not match the subject on the certificate.");
-                            break;
-                        case HRESULT.TRUST_E_SUBJECT_FORM_UNKNOWN:
-                            logger.LogError("The file cannot be signed because it is not a recognized file type for signing or it is corrupt.");
-                            break;
-                    }
-
-                    if (result == HRESULT.S_OK)
-                    {
-                        logger.LogInformation("Signing completed successfully.");
-                        return (state.succeeded + 1, state.failed);
-                    }
-                    else
-                    {
-                        logger.LogError("Signing failed with error {result}.", $"{result:X2}");
-                        if (!options.ContinueOnError || allFiles.Count == 1)
-                        {
-                            logger.LogInformation("Stopping file signing.");
-                            pls.Stop();
-                        }
-
-                        return (state.succeeded, state.failed + 1);
-                    }
-                }
-            }, result =>
+            using (var keyVault = await client.CreateRSAAsync(cancellationToken).ConfigureAwait(false))
+            using (var signer = new CodeSigningService(keyVault, materialized.PublicCertificate, ParseHashAlgorithm(options.FileDigestAlgorithm), timeStampConfiguration, certificates))
+            using (INuGetPackageSignatureService? nugetSignatureService = CreateNuGetSignatureService(keyVault, materialized.PublicCertificate, logger))
             {
-                Interlocked.Add(ref failed, result.failed);
-                Interlocked.Add(ref succeeded, result.succeeded);
-            });
+                var nugetSigner = new NuGetPackageSigner(
+                    signer,
+                    nugetSignatureService,
+                    options.Rfc3161TimestampUrl,
+                    ParseHashAlgorithm(options.FileDigestAlgorithm),
+                    logger);
+
+                var context = new SigningContext(signer, nugetSigner, options, performPageHashing, logger, allFiles.Count);
+
+                Parallel.ForEach(allFiles, parallelOptions, () => (succeeded: 0, failed: 0), (filePath, pls, state) =>
+                    SignOneFile(filePath, pls, state, context, cancellationSource), result =>
+                    {
+                        Interlocked.Add(ref failed, result.failed);
+                        Interlocked.Add(ref succeeded, result.succeeded);
+                    });
+            }
+
+            logger.LogInformation("Successful operations: {Succeeded}", succeeded);
+            logger.LogInformation("Failed operations: {Failed}", failed);
+
+            return failed switch
+            {
+                > 0 when succeeded == 0 => HRESULT.E_ALL_FAILED,
+                > 0 => HRESULT.S_SOME_SUCCESS,
+                _ => HRESULT.S_OK
+            };
+        }
+        finally
+        {
+            Console.CancelKeyPress -= cancelHandler;
+        }
+    }
+
+    private static (int succeeded, int failed) SignOneFile(
+        string filePath,
+        ParallelLoopState loopState,
+        (int succeeded, int failed) state,
+        SigningContext context,
+        CancellationTokenSource cancellationSource)
+    {
+        if (cancellationSource.IsCancellationRequested)
+        {
+            loopState.Stop();
         }
 
-        logger.LogInformation("Successful operations: {succeeded}", succeeded);
-        logger.LogInformation("Failed operations: {failed}", failed);
+        if (loopState.IsStopped)
+        {
+            return state;
+        }
 
-        if (failed > 0 && succeeded == 0)
+        using (context.Logger.BeginScope("File: {Id}", filePath))
         {
-            return HRESULT.E_ALL_FAILED;
-        }
-        else if (failed > 0)
-        {
-            return HRESULT.S_SOME_SUCCESS;
-        }
-        else
-        {
-            return HRESULT.S_OK;
+            context.Logger.LogInformation("Signing file.");
+
+            if (context.Options.SkipSignedFiles && IsSigned(filePath))
+            {
+                context.Logger.LogInformation("Skipping already signed file.");
+                return (state.succeeded + 1, state.failed);
+            }
+
+            int result;
+
+            // Check if this is a NuGet package
+            if (NuGetPackageSigner.IsNuGetPackage(filePath))
+            {
+                result = context.NuGetSigner.SignPackage(
+                    filePath,
+                    context.Options.SignDescription,
+                    context.Options.SignDescriptionUrl,
+                    context.PerformPageHashing,
+                    context.Options.AppendSignature,
+                    context.Options.SignNuGetContents,
+                    context.Options.SignNuGetContentsFilter);
+            }
+            else
+            {
+                result = context.Signer.SignFile(
+                    filePath,
+                    context.Options.SignDescription,
+                    context.Options.SignDescriptionUrl,
+                    context.PerformPageHashing,
+                    context.Logger,
+                    context.Options.AppendSignature);
+            }
+
+            switch (result)
+            {
+                case HRESULT.COR_E_BADIMAGEFORMAT:
+                    context.Logger.LogError("The Publisher Identity in the AppxManifest.xml does not match the subject on the certificate.");
+                    break;
+                case HRESULT.TRUST_E_SUBJECT_FORM_UNKNOWN:
+                    context.Logger.LogError("The file cannot be signed because it is not a recognized file type for signing or it is corrupt.");
+                    break;
+            }
+
+            if (result == HRESULT.S_OK)
+            {
+                context.Logger.LogInformation("Signing completed successfully.");
+                return (state.succeeded + 1, state.failed);
+            }
+
+            context.Logger.LogError("Signing failed with error {Result:X8}.", result);
+            if (!context.Options.ContinueOnError || context.FileCount == 1)
+            {
+                context.Logger.LogInformation("Stopping file signing.");
+                loopState.Stop();
+            }
+
+            return (state.succeeded, state.failed + 1);
         }
     }
 
@@ -562,6 +623,18 @@ internal static class SignCommand
     {
         bool valid = true;
 
+        valid &= ValidateRequiredOptions(options);
+        valid &= ValidateCredentialSelection(options);
+        valid &= ValidateSigningOptions(options);
+        valid &= ValidateFileInputs(options);
+
+        return valid;
+    }
+
+    private static bool ValidateRequiredOptions(SignOptions options)
+    {
+        bool valid = true;
+
         if (options.KeyVaultUrl is null)
         {
             Console.Error.WriteLine("--azure-key-vault-url is required.");
@@ -593,11 +666,12 @@ internal static class SignCommand
             valid = false;
         }
 
-        if (options.Rfc3161TimestampUrl is not null && options.AuthenticodeTimestampUrl is not null)
-        {
-            Console.Error.WriteLine("Cannot use '--timestamp-rfc3161' and '--timestamp-authenticode' options together.");
-            valid = false;
-        }
+        return valid;
+    }
+
+    private static bool ValidateCredentialSelection(SignOptions options)
+    {
+        bool valid = true;
 
         // The client-id/client-secret pair is the service-principal flow. InteractiveBrowserCredential
         // takes a client id on its own, so both checks belong to that flow only.
@@ -638,35 +712,56 @@ internal static class SignCommand
             valid = false;
         }
 
-        // Validate the credential type value if provided
-        if (options.AzureCredentialType.HasValue)
-        {
-            // Validate that ClientSecretCredential has required parameters
-            if (options.AzureCredentialType == Enumerations.AzureCredentialType.ClientSecretCredential)
-            {
-                if (string.IsNullOrWhiteSpace(options.KeyVaultClientId))
-                {
-                    Console.Error.WriteLine("'--azure-key-vault-client-id' is required when using ClientSecretCredential.");
-                    valid = false;
-                }
-                if (string.IsNullOrWhiteSpace(options.KeyVaultClientSecret))
-                {
-                    Console.Error.WriteLine("'--azure-key-vault-client-secret' is required when using ClientSecretCredential.");
-                    valid = false;
-                }
-                if (string.IsNullOrWhiteSpace(options.KeyVaultTenantId))
-                {
-                    Console.Error.WriteLine("'--azure-key-vault-tenant-id' is required when using ClientSecretCredential.");
-                    valid = false;
-                }
-            }
+        valid &= ValidateCredentialTypeRequirements(options);
+        return valid;
+    }
 
-            // Validate that AccessTokenCredential has required parameters
-            if (options.AzureCredentialType == Enumerations.AzureCredentialType.AccessTokenCredential && string.IsNullOrWhiteSpace(options.KeyVaultAccessToken))
+    private static bool ValidateCredentialTypeRequirements(SignOptions options)
+    {
+        if (!options.AzureCredentialType.HasValue)
+        {
+            return true;
+        }
+
+        bool valid = true;
+
+        if (options.AzureCredentialType == AzureCredentialType.ClientSecretCredential)
+        {
+            if (string.IsNullOrWhiteSpace(options.KeyVaultClientId))
             {
-                Console.Error.WriteLine("'--azure-key-vault-accesstoken' is required when using AccessTokenCredential.");
+                Console.Error.WriteLine("'--azure-key-vault-client-id' is required when using ClientSecretCredential.");
                 valid = false;
             }
+            if (string.IsNullOrWhiteSpace(options.KeyVaultClientSecret))
+            {
+                Console.Error.WriteLine("'--azure-key-vault-client-secret' is required when using ClientSecretCredential.");
+                valid = false;
+            }
+            if (string.IsNullOrWhiteSpace(options.KeyVaultTenantId))
+            {
+                Console.Error.WriteLine("'--azure-key-vault-tenant-id' is required when using ClientSecretCredential.");
+                valid = false;
+            }
+        }
+
+        if (options.AzureCredentialType == AzureCredentialType.AccessTokenCredential
+            && string.IsNullOrWhiteSpace(options.KeyVaultAccessToken))
+        {
+            Console.Error.WriteLine("'--azure-key-vault-accesstoken' is required when using AccessTokenCredential.");
+            valid = false;
+        }
+
+        return valid;
+    }
+
+    private static bool ValidateSigningOptions(SignOptions options)
+    {
+        bool valid = true;
+
+        if (options.Rfc3161TimestampUrl is not null && options.AuthenticodeTimestampUrl is not null)
+        {
+            Console.Error.WriteLine("Cannot use '--timestamp-rfc3161' and '--timestamp-authenticode' options together.");
+            valid = false;
         }
 
         if (options.AppendSignature && !OperatingSystem.IsWindowsVersionAtLeast(10, 0, 20348))
@@ -681,15 +776,6 @@ internal static class SignCommand
             valid = false;
         }
 
-        if (options.InputFileList is not null && !File.Exists(options.InputFileList))
-        {
-            Console.Error.WriteLine($"File '{options.InputFileList}' does not exist.");
-            valid = false;
-        }
-
-        valid &= ValidateHashAlgorithm(options.FileDigestAlgorithm, "--file-digest");
-        valid &= ValidateHashAlgorithm(options.TimestampDigestAlgorithm, "--timestamp-digest");
-
         if (options.MaxDegreeOfParallelism < -1)
         {
             Console.Error.WriteLine("'--max-degree-of-parallelism' must be a positive integer, zero, or -1.");
@@ -702,22 +788,33 @@ internal static class SignCommand
             valid = false;
         }
 
+        valid &= ValidateHashAlgorithm(options.FileDigestAlgorithm, "--file-digest");
+        valid &= ValidateHashAlgorithm(options.TimestampDigestAlgorithm, "--timestamp-digest");
+
+        return valid;
+    }
+
+    private static bool ValidateFileInputs(SignOptions options)
+    {
+        bool valid = true;
+
+        if (options.InputFileList is not null && !File.Exists(options.InputFileList))
+        {
+            Console.Error.WriteLine($"File '{options.InputFileList}' does not exist.");
+            valid = false;
+        }
+
         var allFiles = GetAllFiles(options);
         if (allFiles.Count == 0)
         {
             Console.Error.WriteLine("At least one file must be specified to sign.");
-            valid = false;
+            return false;
         }
-        else
+
+        foreach (string file in allFiles.Where(file => !File.Exists(file)))
         {
-            foreach (string file in allFiles)
-            {
-                if (!File.Exists(file))
-                {
-                    Console.Error.WriteLine($"File '{file}' does not exist.");
-                    valid = false;
-                }
-            }
+            Console.Error.WriteLine($"File '{file}' does not exist.");
+            valid = false;
         }
 
         return valid;
@@ -731,12 +828,9 @@ internal static class SignCommand
             return false;
         }
 
-        foreach (string a in s_hashAlgorithm)
+        if (s_hashAlgorithm.Contains(input, StringComparer.OrdinalIgnoreCase))
         {
-            if (input.Equals(a, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
+            return true;
         }
 
         Console.Error.WriteLine($"'{input}' is not a valid hash algorithm for '{optionName}'. Allowed values are [{string.Join(", ", s_hashAlgorithm)}].");
@@ -807,7 +901,7 @@ internal static class SignCommand
         {
             return HashAlgorithmName.SHA1;
         }
-        if ("SHA256".Equals(hashAlgorithm, StringComparison.OrdinalIgnoreCase))
+        if (DefaultHashAlgorithm.Equals(hashAlgorithm, StringComparison.OrdinalIgnoreCase))
         {
             return HashAlgorithmName.SHA256;
         }
@@ -853,7 +947,7 @@ internal static class SignCommand
         return null;
     }
 
-    private static readonly string[] s_hashAlgorithm = ["SHA1", "SHA256", "SHA384", "SHA512"];
+    private static readonly string[] s_hashAlgorithm = ["SHA1", DefaultHashAlgorithm, "SHA384", "SHA512"];
 
     private static INuGetPackageSignatureService? CreateNuGetSignatureService(RSA keyVault, X509Certificate2 certificate, ILogger logger)
     {
@@ -867,6 +961,22 @@ internal static class SignCommand
             return null;
         }
     }
+}
+
+internal sealed class SigningContext(
+    CodeSigningService signer,
+    NuGetPackageSigner nugetSigner,
+    SignOptions options,
+    bool? performPageHashing,
+    ILogger logger,
+    int fileCount)
+{
+    public CodeSigningService Signer { get; } = signer;
+    public NuGetPackageSigner NuGetSigner { get; } = nugetSigner;
+    public SignOptions Options { get; } = options;
+    public bool? PerformPageHashing { get; } = performPageHashing;
+    public ILogger Logger { get; } = logger;
+    public int FileCount { get; } = fileCount;
 }
 
 internal sealed class SignOptions
@@ -884,8 +994,8 @@ internal sealed class SignOptions
     public string? SignDescription { get; set; }
     public string? SignDescriptionUrl { get; set; }
     public string? Rfc3161TimestampUrl { get; set; }
-    public string TimestampDigestAlgorithm { get; set; } = "SHA256";
-    public string FileDigestAlgorithm { get; set; } = "SHA256";
+    public string TimestampDigestAlgorithm { get; set; } = SignCommand.DefaultHashAlgorithm;
+    public string FileDigestAlgorithm { get; set; } = SignCommand.DefaultHashAlgorithm;
     public string? AuthenticodeTimestampUrl { get; set; }
     public string[] AdditionalCertificates { get; set; } = [];
     public bool Verbose { get; set; }

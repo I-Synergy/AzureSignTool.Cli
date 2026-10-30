@@ -25,7 +25,7 @@ internal class AzureKeyVaultConfigurationDiscoverer
         // If a specific credential type is specified, use it
         if (configuration.AzureCredentialType.HasValue)
         {
-            _logger.LogInformation($"Using explicitly specified credential type: {configuration.AzureCredentialType.Value}");
+            _logger.LogInformation("Using explicitly specified credential type: {CredentialType}", configuration.AzureCredentialType.Value);
             credential = CreateCredentialByType(configuration);
         }
         // Legacy behavior: use ManagedIdentity flag for backward compatibility
@@ -49,7 +49,7 @@ internal class AzureKeyVaultConfigurationDiscoverer
             }
             else
             {
-                _logger.LogInformation($"Using Azure Authority: {configuration.AzureAuthority}");
+                _logger.LogInformation("Using Azure Authority: {Authority}", configuration.AzureAuthority);
                 ClientSecretCredentialOptions options = new()
                 {
                     AuthorityHost = AuthorityHostNames.GetUriForAzureAuthorityIdentifier(configuration.AzureAuthority)
@@ -67,22 +67,21 @@ internal class AzureKeyVaultConfigurationDiscoverer
 
             if (!string.IsNullOrWhiteSpace(configuration.AzureKeyVaultCertificateVersion))
             {
-                _logger.LogTrace($"Retrieving version [{configuration.AzureKeyVaultCertificateVersion}] of certificate {configuration.AzureKeyVaultCertificateName}.");
+                _logger.LogTrace("Retrieving version [{CertificateVersion}] of certificate {CertificateName}.", configuration.AzureKeyVaultCertificateVersion, configuration.AzureKeyVaultCertificateName);
                 azureCertificate = (await certClient.GetCertificateVersionAsync(configuration.AzureKeyVaultCertificateName, configuration.AzureKeyVaultCertificateVersion).ConfigureAwait(false)).Value;
             }
             else
             {
-                _logger.LogTrace($"Retrieving current version of certificate {configuration.AzureKeyVaultCertificateName}.");
+                _logger.LogTrace("Retrieving current version of certificate {CertificateName}.", configuration.AzureKeyVaultCertificateName);
                 azureCertificate = (await certClient.GetCertificateAsync(configuration.AzureKeyVaultCertificateName).ConfigureAwait(false)).Value;
             }
-            _logger.LogTrace($"Retrieved certificate with Id {azureCertificate.Id}.");
+            _logger.LogTrace("Retrieved certificate with Id {CertificateId}.", azureCertificate.Id);
 
             certificate = X509CertificateLoader.LoadCertificate(azureCertificate.Cer);
         }
         catch (Exception e)
         {
-            _logger.LogError($"Failed to retrieve certificate {configuration.AzureKeyVaultCertificateName} from Azure Key Vault. Please verify the name of the certificate and the permissions to the certificate. Error message: {e.Message}.");
-            _logger.LogTrace(e.ToString());
+            _logger.LogError(e, "Failed to retrieve certificate {CertificateName} from Azure Key Vault. Please verify the name of the certificate and the permissions to the certificate.", configuration.AzureKeyVaultCertificateName);
 
             return e;
         }
@@ -104,7 +103,7 @@ internal class AzureKeyVaultConfigurationDiscoverer
 
         if (authorityHost is not null)
         {
-            _logger.LogInformation($"Using Azure Authority: {configuration.AzureAuthority}");
+            _logger.LogInformation("Using Azure Authority: {Authority}", configuration.AzureAuthority);
         }
 
         return configuration.AzureCredentialType switch
@@ -143,11 +142,13 @@ internal class AzureKeyVaultConfigurationDiscoverer
         bool hasClientId = !string.IsNullOrWhiteSpace(configuration.AzureClientId);
 
         _logger.LogInformation(hasClientId
-            ? $"Creating ManagedIdentityCredential with Client ID: {configuration.AzureClientId}"
-            : "Creating ManagedIdentityCredential with system-assigned identity");
+            ? "Creating ManagedIdentityCredential with Client ID: {ClientId}"
+            : "Creating ManagedIdentityCredential with system-assigned identity",
+            configuration.AzureClientId);
 
-        ManagedIdentityId identityId = hasClientId
-            ? ManagedIdentityId.FromUserAssignedClientId(configuration.AzureClientId!)
+        string? clientId = hasClientId ? configuration.AzureClientId : null;
+        ManagedIdentityId identityId = clientId is not null
+            ? ManagedIdentityId.FromUserAssignedClientId(clientId)
             : ManagedIdentityId.SystemAssigned;
 
         ManagedIdentityCredentialOptions options = new(identityId);
@@ -173,13 +174,13 @@ internal class AzureKeyVaultConfigurationDiscoverer
         
         if (!string.IsNullOrWhiteSpace(configuration.AzureTenantId))
         {
-            _logger.LogTrace($"Using Tenant ID: {configuration.AzureTenantId}");
+            _logger.LogTrace("Using Tenant ID: {TenantId}", configuration.AzureTenantId);
             options.TenantId = configuration.AzureTenantId;
         }
         
         if (!string.IsNullOrWhiteSpace(configuration.AzureClientId))
         {
-            _logger.LogTrace($"Using Client ID: {configuration.AzureClientId}");
+            _logger.LogTrace("Using Client ID: {ClientId}", configuration.AzureClientId);
             options.ClientId = configuration.AzureClientId;
         }
 
@@ -201,13 +202,13 @@ internal class AzureKeyVaultConfigurationDiscoverer
         
         if (!string.IsNullOrWhiteSpace(configuration.AzureTenantId))
         {
-            _logger.LogTrace($"Using Tenant ID: {configuration.AzureTenantId}");
+            _logger.LogTrace("Using Tenant ID: {TenantId}", configuration.AzureTenantId);
             options.TenantId = configuration.AzureTenantId;
         }
         
         if (!string.IsNullOrWhiteSpace(configuration.AzureClientId))
         {
-            _logger.LogTrace($"Using Client ID: {configuration.AzureClientId}");
+            _logger.LogTrace("Using Client ID: {ClientId}", configuration.AzureClientId);
             options.ClientId = configuration.AzureClientId;
         }
 
@@ -248,7 +249,7 @@ internal class AzureKeyVaultConfigurationDiscoverer
 
     private TokenCredential CreateClientSecretCredential(AzureKeyVaultSignConfigurationSet configuration, Uri? authorityHost)
     {
-        _logger.LogInformation($"Creating ClientSecretCredential with Tenant ID: {configuration.AzureTenantId}, Client ID: {configuration.AzureClientId}");
+        _logger.LogInformation("Creating ClientSecretCredential with Tenant ID: {TenantId}, Client ID: {ClientId}", configuration.AzureTenantId, configuration.AzureClientId);
         
         if (authorityHost is not null)
         {
@@ -264,6 +265,8 @@ internal class AzureKeyVaultConfigurationDiscoverer
     private TokenCredential CreateAccessTokenCredential(AzureKeyVaultSignConfigurationSet configuration)
     {
         _logger.LogInformation("Creating AccessTokenCredential using provided access token");
-        return new AccessTokenCredential(configuration.AzureAccessToken!);
+        var accessToken = configuration.AzureAccessToken
+            ?? throw new InvalidOperationException("An access token is required for AccessTokenCredential.");
+        return new AccessTokenCredential(accessToken);
     }
 }

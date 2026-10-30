@@ -13,10 +13,9 @@
     NUGET_USER is created as a repository secret because trusted publishing exchanges the
     GitHub OIDC token for a short-lived nuget.org API key.
 
-    Creates the `production` and `acceptance` environments. Only `-GatedEnvironments` (default
-    `production`) receives the `-Reviewers` as required reviewers; `acceptance` stays ungated so a
-    pull request publishes its preview from CI without approval. Self-review is allowed on a gated
-    environment, because a solo maintainer also triggers the runs.
+    Creates the `production` environment. It receives `-Reviewers` as required reviewers.
+    Self-review is allowed because a solo maintainer also triggers the runs. Pull requests do
+    not publish, so no separate ungated environment is needed.
 
 .EXAMPLE
     ./scripts/Set-GitHubSettings.ps1
@@ -30,7 +29,7 @@
 param(
     [string]$Repository = 'I-Synergy/AzureSignTool.Cli',
 
-    [string[]]$Environments = @('production', 'acceptance'),
+    [string[]]$Environments = @('production'),
 
     [string]$BuildConfiguration = 'Release',
 
@@ -64,7 +63,7 @@ if ($LASTEXITCODE -ne 0) {
     throw 'GitHub CLI is not authenticated. Run: gh auth login'
 }
 
-function Read-Value {
+function Show-ReadValue {
     param([string]$Prompt, [string]$Current)
 
     if (-not [string]::IsNullOrWhiteSpace($Current)) {
@@ -85,7 +84,7 @@ function Set-RepoVariable {
 
     gh variable set $Name --repo $Repository --body $Value
     if ($LASTEXITCODE -ne 0) { throw "Failed to set variable $Name" }
-    Write-Host "  variable $Name set"
+    Write-Output "  variable $Name set"
 }
 
 Write-Host "Repository: $Repository"
@@ -118,10 +117,10 @@ function Set-Environment {
     if ($LASTEXITCODE -ne 0) { throw "Failed to configure the '$Name' environment" }
 
     if ($reviewerIds.Count -gt 0) {
-        Write-Host "  environment $Name created with required reviewers: $($Reviewers -join ', ')"
+        Write-Output "  environment $Name created with required reviewers: $($Reviewers -join ', ')"
     }
     else {
-        Write-Host "  environment $Name created without a gate (CI publishes directly)"
+        Write-Output "  environment $Name created without a gate (CI publishes directly)"
     }
 }
 
@@ -133,12 +132,12 @@ Write-Host ''
 Write-Host 'Variables (press Enter to skip any that do not apply):'
 
 $variables = [ordered]@{
-    BUILD_CONFIGURATION       = Read-Value 'Build configuration [Release]' $BuildConfiguration
-    AZURE_CLIENT_ID           = Read-Value 'Azure client id (OIDC)' $AzureClientId
-    AZURE_TENANT_ID           = Read-Value 'Azure tenant id (OIDC)' $AzureTenantId
-    AZURE_KEYVAULT_URI        = Read-Value 'Key Vault URI (blank = skip package signing)' $AzureKeyVaultUri
-    AZURE_SIGNING_CERTIFICATE = Read-Value 'Key Vault certificate name' $AzureSigningCertificate
-    TIMESTAMP_URL             = Read-Value 'RFC 3161 timestamp URL' $TimestampUrl
+    BUILD_CONFIGURATION       = Show-ReadValue 'Build configuration [Release]' $BuildConfiguration
+    AZURE_CLIENT_ID           = Show-ReadValue 'Azure client id (OIDC)' $AzureClientId
+    AZURE_TENANT_ID           = Show-ReadValue 'Azure tenant id (OIDC)' $AzureTenantId
+    AZURE_KEYVAULT_URI        = Show-ReadValue 'Key Vault URI (blank = skip package signing)' $AzureKeyVaultUri
+    AZURE_SIGNING_CERTIFICATE = Show-ReadValue 'Key Vault certificate name' $AzureSigningCertificate
+    TIMESTAMP_URL             = Show-ReadValue 'RFC 3161 timestamp URL' $TimestampUrl
 }
 
 foreach ($entry in $variables.GetEnumerator()) {
@@ -151,7 +150,7 @@ if (-not $SkipSecrets) {
     Write-Host ''
     Write-Host 'Secrets:'
 
-    $user = Read-Value 'nuget.org username for trusted publishing (NUGET_USER) [ismailhassani]' $NuGetUser
+    $user = Show-ReadValue 'nuget.org username for trusted publishing (NUGET_USER) [ismailhassani]' $NuGetUser
     if ([string]::IsNullOrWhiteSpace($user)) {
         Write-Host '  NUGET_USER skipped - the release job cannot log in to nuget.org until it is set'
     }
