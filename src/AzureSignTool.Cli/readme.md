@@ -418,7 +418,7 @@ It replaced the former Azure DevOps pipeline.
 | Job | Runner | What it does |
 |:----|:-------|:-------------|
 | `build` | `ubuntu-latest` | restore → build → pack → verify the package → test with opencover coverage → upload `nupkgs` and `test-results` |
-| `release` | `windows-2025` | sign the packages with the `AzureSignTool` built by the `build` job, through Azure Key Vault (OIDC) — the NuGet signature plus an Authenticode signature on our own assemblies inside the package (`--sign-nuget-contents-filter "AzureSignTool*"`) — push to nuget.org (trusted publishing). A push to `main` publishes a release through the `production` environment and creates the `<version>` tag + GitHub release; a pull request from this repository publishes a `-preview` package through the `acceptance` environment and creates no tag |
+| `release` | `windows-2025` | sign the packages with the `AzureSignTool` built by the `build` job, through Azure Key Vault (OIDC) — the NuGet signature plus an Authenticode signature on our own assemblies inside the package (`--sign-nuget-contents-filter "AzureSignTool*"`) — push to nuget.org (trusted publishing). A push to `main` publishes a release through the `production` environment and creates the `<version>` tag + GitHub release. Pull requests build, test and pack only; they never publish or create a tag |
 
 Build and tests are platform-neutral; only the native signing path is Windows-bound
 (`mssign32`/`crypt32`). The two test classes that exercise it —
@@ -427,9 +427,9 @@ Build and tests are platform-neutral; only the native signing path is Windows-bo
 Windows because the tool itself refuses to run elsewhere.
 
 Versions come from the workflow clock in UTC as `yyyy.1MMdd.1HHmm` (`2026.11027.11034`); pull
-requests get a `-preview` package suffix (`2026.11027.11034-preview`). No file is bumped for a
-release: the tag and GitHub release use the build number directly (no `v` prefix). Fork PRs never
-publish — they get no secrets — so only branches in this repository can produce a preview.
+request builds use a `-preview` package suffix for their uploaded artifacts, but are never
+published. No file is bumped for a release: the tag and GitHub release use the build number
+directly (no `v` prefix).
 
 ### 🔐 Repository configuration
 
@@ -441,8 +441,8 @@ everything, using an authenticated `gh` CLI:
 ```
 
 - **Environments** (Settings → Environments): `production` gates a release from `main` with
-  required reviewers (`-Reviewers`, default `ismailhassani`); `acceptance` is deliberately
-  **ungated**, so a pull request publishes its preview from CI without approval.
+  required reviewers (`-Reviewers`, default `ismailhassani`). Pull requests do not publish, so no
+  second environment is needed.
 - **Variables**: `BUILD_CONFIGURATION` (optional, defaults to `Release`), `AZURE_CLIENT_ID`,
   `AZURE_TENANT_ID`, `AZURE_KEYVAULT_URI`, `AZURE_SIGNING_CERTIFICATE`, `TIMESTAMP_URL`. No
   subscription id is needed: the release job requests the OIDC token directly and signs through the
@@ -451,7 +451,7 @@ everything, using an authenticated `gh` CLI:
   (`ismailhassani`, not the `I-Synergy` organization). The release job fails fast with a clear
   message when it is missing.
 
-nuget.org trusted publishing pins the environment name, so each environment needs its own policy.
+nuget.org trusted publishing pins the `production` environment name.
 Signing is skipped when `AZURE_KEYVAULT_URI` is not configured — the release job logs a warning and
 publishes unsigned packages in that case.
 

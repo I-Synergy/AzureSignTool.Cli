@@ -18,11 +18,10 @@
 #
 # Environments (Settings → Environments):
 #   production - approval gate for a release published from `main`
-#   acceptance - NOT gated: a same-repo pull request publishes its signed `-preview` package
-#                directly from CI
-# scripts/Set-GitHubSettings.ps1 creates both and adds required reviewers to `production` only.
-# nuget.org trusted publishing needs one policy per environment, because the policy pins the
-# environment name the publishing job runs in.
+# scripts/Set-GitHubSettings.ps1 creates it and adds required reviewers.
+# nuget.org trusted publishing pins the environment name the publishing job runs in.
+#
+# Pull requests build, test and pack only; they never publish.
 #
 # Create them all at once with: ./scripts/Set-GitHubSettings.ps1
 #
@@ -207,20 +206,16 @@ jobs:
           retention-days: 30
 
   release:
-    name: Publish ${{ github.event_name == 'pull_request' && 'preview' || 'release' }} packages
+    name: Publish release packages
     needs: build
     # Never cancel a job that may be mid-push to NuGet.org or mid-release: queue instead.
     concurrency:
       group: ci-release-${{ github.ref }}
       cancel-in-progress: false
-    # `main` publishes a release through `production`; a pull request from this repository (not a
-    # fork, which gets no secrets) publishes a signed `-preview` package through `acceptance`.
-    if: >-
-      github.ref == 'refs/heads/main' ||
-      (github.event_name == 'pull_request' &&
-       github.event.pull_request.head.repo.full_name == github.repository)
+    # `main` publishes a release through `production`. Pull requests stop after the build job.
+    if: github.ref == 'refs/heads/main'
     runs-on: windows-2025
-    environment: ${{ github.event_name == 'pull_request' && 'acceptance' || 'production' }}
+    environment: production
     timeout-minutes: 60
     permissions:
       contents: write   # push the release tag
@@ -233,7 +228,6 @@ jobs:
 
       - name: Check release tag
         id: release_tag
-        if: github.event_name != 'pull_request'
         shell: pwsh
         env:
           BUILD_NUMBER: ${{ needs.build.outputs.buildNumber }}
@@ -341,7 +335,7 @@ jobs:
           }
 
       - name: Create git tag
-        if: github.event_name != 'pull_request' && steps.release_tag.outputs.skip != 'true'
+        if: steps.release_tag.outputs.skip != 'true'
         shell: pwsh
         env:
           BUILD_NUMBER: ${{ needs.build.outputs.buildNumber }}
@@ -354,7 +348,7 @@ jobs:
           -UserName 'github-actions[bot]'
 
       - name: Create GitHub release
-        if: github.event_name != 'pull_request' && steps.release_tag.outputs.skip != 'true'
+        if: steps.release_tag.outputs.skip != 'true'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}

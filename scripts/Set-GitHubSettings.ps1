@@ -13,10 +13,9 @@
     NUGET_USER is created as a repository secret because trusted publishing exchanges the
     GitHub OIDC token for a short-lived nuget.org API key.
 
-    Creates the `production` and `acceptance` environments. Only `-GatedEnvironments` (default
-    `production`) receives the `-Reviewers` as required reviewers; `acceptance` stays ungated so a
-    pull request publishes its preview from CI without approval. Self-review is allowed on a gated
-    environment, because a solo maintainer also triggers the runs.
+    Creates the `production` environment. It receives `-Reviewers` as required reviewers.
+    Self-review is allowed because a solo maintainer also triggers the runs. Pull requests do
+    not publish, so no separate ungated environment is needed.
 
 .EXAMPLE
     ./scripts/Set-GitHubSettings.ps1
@@ -30,7 +29,7 @@
 param(
     [string]$Repository = 'I-Synergy/AzureSignTool.Cli',
 
-    [string[]]$Environments = @('production', 'acceptance'),
+    [string[]]$Environments = @('production'),
 
     [string]$BuildConfiguration = 'Release',
 

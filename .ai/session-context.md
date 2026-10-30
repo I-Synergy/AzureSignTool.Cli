@@ -226,3 +226,12 @@ Applied through the GitHub REST API (token from Git Credential Manager) and `az`
 - Both READMEs now carry the six SonarCloud badges (quality gate, bugs, code smells,
   vulnerabilities, security rating, maintainability rating).
 - Record: `.ai/completed/release-versioning.md`; plan: `.ai/plans/release-versioning.md`.
+
+## PR publishing disabled (2026-10-30, Reasonix Code)
+
+- The `release` job now runs only for `refs/heads/main`; pull requests build, test and pack but
+  never sign, push to nuget.org, tag, or create a release.
+- `production` is the only environment `scripts/Set-GitHubSettings.ps1` creates, and both READMEs
+  document that PRs are build-only.
+- Reason: the nuget.org trusted-publishing policy is bound to `production`; PR preview publishing
+  through `acceptance` failed with an environment mismatch.
