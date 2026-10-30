@@ -225,6 +225,7 @@ Applied through the GitHub REST API (token from Git Credential Manager) and `az`
   `SignCommand`; Release build and all 139 tests pass.
 - Both READMEs now carry the six SonarCloud badges (quality gate, bugs, code smells,
   vulnerabilities, security rating, maintainability rating).
+- The CI badge line also carries the NuGet version and download badges.
 - Record: `.ai/completed/release-versioning.md`; plan: `.ai/plans/release-versioning.md`.
 
 ## PR publishing disabled (2026-10-30, Reasonix Code)

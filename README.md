@@ -1,6 +1,6 @@
 ﻿# 🔐 AzureSignTool
 
-[![CI](https://github.com/I-Synergy/AzureSignTool.Cli/actions/workflows/ci.yml/badge.svg)](https://github.com/I-Synergy/AzureSignTool.Cli/actions/workflows/ci.yml)
+[![CI](https://github.com/I-Synergy/AzureSignTool.Cli/actions/workflows/ci.yml/badge.svg)](https://github.com/I-Synergy/AzureSignTool.Cli/actions/workflows/ci.yml) [![NuGet](https://img.shields.io/nuget/v/AzureSignTool.Cli.svg)](https://www.nuget.org/packages/AzureSignTool.Cli) [![NuGet downloads](https://img.shields.io/nuget/dt/AzureSignTool.Cli.svg)](https://www.nuget.org/packages/AzureSignTool.Cli)
 
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=I-Synergy_AzureSignTool.Cli&metric=alert_status)](https://sonarcloud.io/dashboard?id=I-Synergy_AzureSignTool.Cli)
 [![Bugs](https://sonarcloud.io/api/project_badges/measure?project=I-Synergy_AzureSignTool.Cli&metric=bugs)](https://sonarcloud.io/dashboard?id=I-Synergy_AzureSignTool.Cli)
