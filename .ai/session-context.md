@@ -251,3 +251,38 @@ Applied through the GitHub REST API (token from Git Credential Manager) and `az`
 - Verification: Release build 0 warnings/0 errors; 52 CLI + 87 Core tests pass;
   `git diff --check` clean. Awaiting the next SonarCloud analysis to confirm zero new issues.
 - Committed as `11559da` on `fix/sonarcloud-five-issues`; PR #3 targets `main`.
+
+## .NET 11 upgrade — CI audit (2026-11-11, Reasonix Code)
+
+- CI had two .NET 10 leftovers that would have broken the pipeline: the `signing-tool` artifact
+  path (`bin/<config>/net10.0`, with `if-no-files-found: error` → build job fails) and the release
+  job's `dotnet-version: '10.0.x'` (it runs the net11.0 signing tool). Both now `net11.0` / `11.0.x`.
+- Dropping the `System.Security.Cryptography.Pkcs` reference silently resolved it to 8.0.1
+  transitively via `NuGet.Packaging 8.0.0` — re-pinned at 11.0.0 in `Directory.Packages.props`
+  plus an explicit `PackageReference` in `AzureSignTool.Core`.
+- Docs aligned: both readmes (SDK 11.0.100), `docs/WALKTHROUGH.md` (`11.0.x`),
+  `.ai/project/tech-stack.md` (SDK, TFM, all package versions).
+- Verification: Release build 0 warnings/0 errors; 52 CLI + 87 Core tests pass on net11.0;
+  no direct package outdated; package contains only `tools/net11.0/any`.
+- Left alone: `Directory.Build.props` `LangVersion 14.0` (builds clean at 15.0, but that is a
+  code-semantics decision). Details: `.ai/completed/dotnet11-ci-audit.md`.
+
+## Self-contained tool packaging (2026-11-11, Reasonix Code)
+
+- The tool was framework-dependent, so consumers needed the matching .NET runtime. It now packs
+  **self-contained per RID** (`RuntimeIdentifiers=win-x64;win-arm64;linux-x64`,
+  `SelfContained` conditioned on `RuntimeIdentifier`), producing `AzureSignTool.Cli.<rid>`
+  packages plus a small pointer package that NuGet resolves by machine RID.
+- Consumers need a .NET 10+ CLI to install (RID tool packages are an SDK 10 feature) but **no .NET
+  runtime** — verified: installed shim points at `tools/any/<rid>/AzureSignTool.exe`, runtimeconfig
+  has `includedFrameworks`, works with an SDK 10.0.404 install client.
+- `GeneratePackageOnBuild=false` on the CLI project (a build-time package cannot do the per-RID
+  publishes); pointer package gets no `.snupkg` (NU5017 — empty symbols package).
+- CI: Pack no longer uses `--no-build`; Verify packages asserts the 4-package shape and the
+  bundled runtime; the signing tool is staged with `dotnet publish --no-build -o signing-tool`
+  (the old `bin/.../net11.0` path would have uploaded ~250 MB of RID publishes); pushes now send
+  RID packages **before** the pointer package.
+- Verification: Release build 0 warnings/0 errors; 52 CLI + 87 Core tests pass; `dotnet pack`
+  produces pointer + win-x64/win-arm64/linux-x64 (39–41 MB each) + 3 snupkgs; the workflow's
+  verify script passes and throws on a pointer-only folder.
+- Record: `.ai/completed/self-contained-tool-packaging.md`.

@@ -193,6 +193,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v4
         with:
+          # Any .NET 10+ SDK can install the tool; the package brings its own runtime.
           dotnet-version: '10.0.x'
 
       - name: Install AzureSignTool

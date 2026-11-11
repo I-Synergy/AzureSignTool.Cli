@@ -5,6 +5,7 @@
 [Rr]elease/
 artifacts/
 packages/
+signing-tool/
 *.user
 *.suo
 .vs/

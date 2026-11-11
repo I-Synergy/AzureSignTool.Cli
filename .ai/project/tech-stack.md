@@ -4,8 +4,8 @@
 
 ## Runtime & Language
 
-- **.NET SDK:** 10.0.102 (`global.json`, `rollForward: latestFeature`, prerelease allowed)
-- **Target Framework:** `net10.0`
+- **.NET SDK:** 11.0.100 (`global.json`, `rollForward: latestFeature`, prerelease allowed)
+- **Target Framework:** `net11.0`
 - **Language:** C# 14 (`LangVersion` in `Directory.Build.props`)
 - **Nullable Reference Types:** Enabled
 - **Implicit Usings:** Enabled
@@ -15,22 +15,25 @@
 
 - **`AzureSignTool.Cli`** — console application packed as a .NET global tool
   (`PackAsTool=true`, `ToolCommandName=AzureSignTool`, `AssemblyName=AzureSignTool`).
+  Published **self-contained per RID** (`SelfContained` for RID builds,
+  `RuntimeIdentifiers=win-x64;win-arm64;linux-x64`): one package per RID plus a pointer package,
+  so consumers need no .NET runtime — only a .NET 10+ CLI to install. Trimming/AOT stay off
+  (Azure.Identity and NuGet.Packaging use reflection).
 - **`AzureSignTool.Core`** — signing library, `IsPackable=false`; ships only inside the tool.
 
 ## Frameworks & Libraries
 
 | Category | Technology | Version | Notes |
 |----------|-----------|---------|-------|
-| **CLI parsing** | System.CommandLine | 2.0.14 | commands, options, help, `--version` |
+| **CLI parsing** | System.CommandLine | 3.0.0 | commands, options, help, `--version` |
 | **Azure authentication** | Azure.Identity | 1.21.0 | `DefaultAzureCredential`, `WorkloadIdentityCredential`, `ManagedIdentityCredential`, `ClientSecretCredential`, … |
-| **Key Vault** | Azure.Security.KeyVault.Certificates / Azure.Security.KeyVault.Keys | 4.9.2 / 4.10.2 | certificate lookup and key operations |
-| **Globbing** | Microsoft.Extensions.FileSystemGlobbing | 10.0.14 | file arguments and NuGet content filters |
-| **Logging** | Microsoft.Extensions.Logging (+ Console) | 10.0.14 | console output, `--verbose` |
-| **NuGet packages** | NuGet.Packaging | 7.9.0 | reading and re-signing `.nupkg` files |
-| **CMS / signatures** | System.Security.Cryptography.Pkcs | 10.0.14 | package signature blobs |
-| **Package IO** | System.IO.Packaging | 10.0.2 | OPC package handling |
+| **Key Vault** | Azure.Security.KeyVault.Certificates / Azure.Security.KeyVault.Keys | 4.10.0 / 4.10.2 | certificate lookup and key operations |
+| **Globbing** | Microsoft.Extensions.FileSystemGlobbing | 11.0.0 | file arguments and NuGet content filters |
+| **Logging** | Microsoft.Extensions.Logging (+ Console) | 11.0.0 | console output, `--verbose` |
+| **NuGet packages** | NuGet.Packaging | 8.0.0 | reading and re-signing `.nupkg` files |
+| **CMS / signatures** | System.Security.Cryptography.Pkcs | 11.0.0 | package signature blobs |
 | **Native interop** | `mssign32` / `crypt32` via `LibraryImport` | — | Authenticode signing and certificate stores (Windows only) |
-| **Testing** | MSTest.TestFramework + MSTest.TestAdapter | 4.5.1 | with Microsoft.NET.Test.Sdk 18.11.0 |
+| **Testing** | MSTest.TestAdapter | 4.5.2 | brings MSTest.TestFramework transitively; Microsoft.NET.Test.Sdk 18.11.1 |
 | **Coverage** | coverlet.collector | 10.1.0 | `XPlat Code Coverage`, opencover format |
 
 There is no database, web API, UI or identity-server layer — the tool is a single-purpose CLI.
