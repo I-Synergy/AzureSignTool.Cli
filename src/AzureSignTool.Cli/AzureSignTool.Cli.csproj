@@ -2,13 +2,30 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
     <PackageId>AzureSignTool.Cli</PackageId>
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>AzureSignTool</ToolCommandName>
     <AssemblyName>AzureSignTool</AssemblyName>
     <Description>AzureSignTool.Cli - sign files and NuGet packages with Azure Key Vault certificates</Description>
     <PackageTags>AzureSignTool, Cli, Azure, SignTool, CodeSigning, NuGet</PackageTags>
+    <!-- Packaging an RID-specific tool requires an explicit `dotnet pack` (it publishes one
+         runtime layout per RID); a package generated during `dotnet build` cannot do that. -->
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <!-- Ship the .NET runtime inside the tool package so consumers do not need a matching .NET
+         runtime installed. Each RID becomes its own package (AzureSignTool.Cli.<rid>); the
+         AzureSignTool.Cli package itself is a small pointer that selects one by machine RID.
+         See .github/workflows/ci.yml for the matching pack/verify steps. -->
+    <SelfContained Condition="'$(RuntimeIdentifier)' != ''">true</SelfContained>
+    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64</RuntimeIdentifiers>
+    <!-- Trimming/AOT are unsafe here: Azure.Identity and NuGet.Packaging (Newtonsoft.Json) rely
+         on reflection. Keep the full runtime. -->
+    <PublishTrimmed>false</PublishTrimmed>
+    <PublishAot>false</PublishAot>
+    <!-- The pointer package carries no code, so a symbols package for it is empty and NuGet
+         rejects it (NU5017). Only the RID-specific packages get .snupkg files. -->
+    <IncludeSymbols>false</IncludeSymbols>
+    <IncludeSymbols Condition="'$(RuntimeIdentifier)' != ''">true</IncludeSymbols>
   </PropertyGroup>
 
   <ItemGroup>

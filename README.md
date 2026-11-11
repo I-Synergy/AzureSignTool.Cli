@@ -61,6 +61,15 @@ dotnet tool install --global AzureSignTool.Cli
 AzureSignTool --version
 ```
 
+The tool is published **self-contained**: NuGet picks the package for your machine's runtime
+identifier (`win-x64`, `win-arm64` or `linux-x64`) and ships the matching .NET runtime inside it,
+so **no .NET runtime has to be installed**. You only need a .NET 10 or later CLI to install or
+update the tool, and `dotnet` can be removed from the machine afterwards — the installed shim
+invokes `AzureSignTool.exe` directly.
+
+On a runtime identifier without a package (for example `osx-arm64`), installation stops with
+`The tool does not support the current architecture or operating system`.
+
 ---
 
 ## 🔑 Authentication Methods
@@ -464,8 +473,10 @@ publishes unsigned packages in that case.
 | Requirement | Version |
 |:------------|:--------|
 | 🖥️ Runtime OS | Windows 10 or later (signing calls `mssign32`/`crypt32`) |
+| ⚙️ .NET runtime (to run) | Not required — the package bundles it (`win-x64`, `win-arm64`, `linux-x64`) |
+| 📦 .NET CLI (to install/update) | 10.0 or later |
 | 🛠️ Build/test OS | Any — Windows, Linux or macOS |
-| 🧰 .NET SDK (for building) | 10.0.102 (`global.json`, `rollForward: latestFeature`) |
+| 🧰 .NET SDK (for building) | 11.0.100 (`global.json`, `rollForward: latestFeature`) |
 
 ---
 

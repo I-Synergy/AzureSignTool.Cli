@@ -25,6 +25,10 @@
 #
 # Create them all at once with: ./scripts/Set-GitHubSettings.ps1
 #
+# The CLI is packed as a self-contained tool: one package per RID (win-x64, win-arm64, linux-x64)
+# plus a small pointer package. Consumers therefore need a .NET 10+ CLI to install, but no .NET
+# runtime to run it. RID packages must be pushed before the pointer package.
+#
 # Signing runs the `AzureSignTool` built by this same workflow (the `signing-tool` artifact), so
 # the first release does not depend on a previously published package.
 
@@ -137,12 +141,14 @@ jobs:
         shell: pwsh
         run: dotnet list AzureSignTool.Cli.slnx package --vulnerable --include-transitive
 
+      # The tool is packed self-contained per RID (see AzureSignTool.Cli.csproj), so pack publishes
+      # win-x64, win-arm64 and linux-x64 and produces one package per RID plus a small pointer
+      # package. That publish cannot be skipped with --no-build.
       - name: Pack
         shell: pwsh
         run: >
           dotnet pack AzureSignTool.Cli.slnx
           -c $env:BUILD_CONFIGURATION
-          --no-build
           -p:Version=${{ steps.version.outputs.VersionPackage }}
           -p:AssemblyVersion=${{ steps.version.outputs.VersionNumber }}
           -p:FileVersion=${{ steps.version.outputs.VersionNumber }}
@@ -151,21 +157,69 @@ jobs:
           -p:ContinuousIntegrationBuild=true
           -o packages
 
+      # Shape check for the self-contained RID tool packages. The pointer package must name every
+      # RID, each RID package must carry an apphost plus the bundled runtime, and no package may be
+      # framework-dependent — that is the guarantee consumers rely on (no .NET install needed).
       - name: Verify packages
         shell: pwsh
         run: |
-          $packages = @(Get-ChildItem -Path 'packages' -Filter *.nupkg)
-          if ($packages.Count -ne 1) {
-            throw "Expected a single AzureSignTool.Cli package, found $($packages.Count)."
+          $expectedRids = @('win-x64', 'win-arm64', 'linux-x64')
+          $nupkgs = @(Get-ChildItem -Path 'packages' -Filter *.nupkg)
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+          function Get-PackageEntries([string] $path) {
+            $zip = [System.IO.Compression.ZipFile]::OpenRead($path)
+            try { return @($zip.Entries | ForEach-Object { $_.FullName }) } finally { $zip.Dispose() }
           }
-          Add-Type -AssemblyName System.IO.Compression
-          $package = $packages[0]
-          $zip = [System.IO.Compression.ZipFile]::OpenRead($package.FullName)
-          try { $entries = @($zip.Entries | ForEach-Object { $_.FullName }) } finally { $zip.Dispose() }
-          if (-not ($entries | Where-Object { $_ -like 'tools/*' })) {
-            throw "$($package.Name) is missing its `tools/` payload."
+
+          function Get-PackageEntryText([string] $path, [string] $entryName) {
+            $zip = [System.IO.Compression.ZipFile]::OpenRead($path)
+            try {
+              $entry = $zip.GetEntry($entryName)
+              if (-not $entry) { return $null }
+              $reader = New-Object System.IO.StreamReader($entry.Open())
+              try { return $reader.ReadToEnd() } finally { $reader.Dispose() }
+            }
+            finally { $zip.Dispose() }
           }
-          Write-Host "Verified $($package.Name): tool package with tools/ payload."
+
+          $pointer = @($nupkgs | Where-Object { $_.BaseName -match '^AzureSignTool\.Cli\.\d' })
+          if ($pointer.Count -ne 1) {
+            throw "Expected a single AzureSignTool.Cli pointer package, found $($pointer.Count)."
+          }
+          if ($nupkgs.Count -ne (1 + $expectedRids.Count)) {
+            throw "Expected $(1 + $expectedRids.Count) packages, found $($nupkgs.Count): $($nupkgs.Name -join ', ')."
+          }
+
+          $settings = Get-PackageEntryText $pointer[0].FullName 'tools/any/any/DotnetToolSettings.xml'
+          if (-not $settings) { throw "$($pointer[0].Name) has no tools/any/any/DotnetToolSettings.xml." }
+          foreach ($rid in $expectedRids) {
+            if ($settings -notmatch "RuntimeIdentifier=`"$rid`"") {
+              throw "$($pointer[0].Name) does not declare the $rid package."
+            }
+          }
+
+          foreach ($rid in $expectedRids) {
+            $package = @($nupkgs | Where-Object { $_.BaseName -like "AzureSignTool.Cli.$rid.*" })
+            if ($package.Count -ne 1) { throw "Expected one AzureSignTool.Cli.$rid package, found $($package.Count)." }
+
+            $entries = Get-PackageEntries $package[0].FullName
+            if (-not ($entries -contains "tools/any/$rid/DotnetToolSettings.xml")) {
+              throw "$($package[0].Name) is missing tools/any/$rid/DotnetToolSettings.xml."
+            }
+            # The bundled core library is what makes the package self-contained.
+            if (-not ($entries -contains "tools/any/$rid/System.Private.CoreLib.dll")) {
+              throw "$($package[0].Name) does not bundle the .NET runtime (System.Private.CoreLib.dll)."
+            }
+
+            $runtimeConfig = Get-PackageEntryText $package[0].FullName "tools/any/$rid/AzureSignTool.runtimeconfig.json"
+            if (-not $runtimeConfig) { throw "$($package[0].Name) is missing its runtimeconfig.json." }
+            if ($runtimeConfig -match '"framework"') {
+              throw "$($package[0].Name) is framework-dependent; it must declare includedFrameworks."
+            }
+          }
+
+          Write-Host "Verified $($pointer[0].Name) + $($expectedRids -join ', '): self-contained RID tool packages."
 
       - name: Test
         shell: pwsh
@@ -187,11 +241,23 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
+      # The RID-specific publishes land under bin/<config>/net11.0/<rid>/, so stage the
+      # framework-dependent layout the release job signs with into its own directory instead of
+      # uploading the whole bin folder.
+      - name: Stage signing tool
+        shell: pwsh
+        run: |
+          dotnet publish src/AzureSignTool.Cli/AzureSignTool.Cli.csproj `
+            -c $env:BUILD_CONFIGURATION `
+            --no-build `
+            -o signing-tool
+          if ($LASTEXITCODE -ne 0) { throw 'Staging the signing tool failed.' }
+
       - name: Upload signing tool
         uses: actions/upload-artifact@v7
         with:
           name: signing-tool
-          path: src/AzureSignTool.Cli/bin/${{ env.BUILD_CONFIGURATION }}/net10.0
+          path: signing-tool
           if-no-files-found: error
           retention-days: 7
 
@@ -241,14 +307,14 @@ jobs:
             "skip=false" >> $env:GITHUB_OUTPUT
           }
 
-      # The release job never compiles anything: it only needs a .NET 10 host for the built
-      # signing tool and the CLI for `dotnet nuget push`. Asking for 10.0.x lets setup-dotnet
+      # The release job never compiles anything: it only needs a .NET 11 host for the built
+      # signing tool and the CLI for `dotnet nuget push`. Asking for 11.0.x lets setup-dotnet
       # reuse an SDK already in the runner's tool cache; global.json's `rollForward:
-      # latestFeature` accepts any 10.0.x feature band.
-      - name: Install .NET SDK 10.0
+      # latestFeature` accepts any 11.0.x feature band.
+      - name: Install .NET SDK 11.0
         uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '11.0.x'
 
       - name: Validate publishing configuration
         shell: pwsh
@@ -323,15 +389,25 @@ jobs:
         with:
           user: ${{ secrets.NUGET_USER }}
 
+      # NuGet resolves a RID-specific tool through the pointer package, so every RID package must
+      # exist in the feed before the pointer is pushed; otherwise installs fail mid-publish.
       - name: Push packages to NuGet.org
         shell: pwsh
         run: |
-          Get-ChildItem -Path 'packages' -Filter *.nupkg | ForEach-Object {
-            dotnet nuget push $_.FullName `
+          $nupkgs = @(Get-ChildItem -Path 'packages' -Filter *.nupkg)
+          $pointer = @($nupkgs | Where-Object { $_.BaseName -match '^AzureSignTool\.Cli\.\d' })
+          $ridPackages = @($nupkgs | Where-Object { $_.BaseName -notmatch '^AzureSignTool\.Cli\.\d' })
+          if ($pointer.Count -ne 1) {
+            throw "Expected exactly one AzureSignTool.Cli pointer package, found $($pointer.Count)."
+          }
+
+          foreach ($package in @($ridPackages + $pointer)) {
+            Write-Host "Pushing $($package.Name)"
+            dotnet nuget push $package.FullName `
               --api-key ${{ steps.nuget.outputs.NUGET_API_KEY }} `
               --source https://api.nuget.org/v3/index.json `
               --skip-duplicate
-            if ($LASTEXITCODE -ne 0) { throw "NuGet push failed for $($_.Name)" }
+            if ($LASTEXITCODE -ne 0) { throw "NuGet push failed for $($package.Name)" }
           }
 
       - name: Create git tag
