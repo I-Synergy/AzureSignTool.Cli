@@ -286,3 +286,17 @@ Applied through the GitHub REST API (token from Git Credential Manager) and `az`
   produces pointer + win-x64/win-arm64/linux-x64 (39–41 MB each) + 3 snupkgs; the workflow's
   verify script passes and throws on a pointer-only folder.
 - Record: `.ai/completed/self-contained-tool-packaging.md`.
+
+## Release job no longer installs .NET (2026-11-11, Reasonix Code)
+
+- The `Install .NET SDK 11.0` step in the release job existed only because the signing tool was
+  run framework-dependently (`dotnet signing-tool/AzureSignTool.dll`). With the tool now packed
+  self-contained per RID, the release job unpacks `AzureSignTool.Cli.win-x64.*.nupkg` from the
+  `nupkgs` artifact and runs `tools/any/win-x64/AzureSignTool.exe` directly — no runtime, and it
+  signs with the exact binary that ships.
+- Removed `setup-dotnet` from the release job and the `Stage signing tool` / `Upload signing tool`
+  steps from the build job. The only remaining .NET use is `dotnet nuget push`, provided by the
+  `windows-2025` image.
+- Verified: the extraction step, taken from the workflow, picks exactly the win-x64 nupkg out of
+  the four artifacts and yields `tools/any/win-x64/AzureSignTool.exe`; the extracted
+  self-contained binary runs `--version` and `sign --help` with no `dotnet` involved.
