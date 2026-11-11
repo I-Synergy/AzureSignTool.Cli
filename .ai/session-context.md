@@ -300,3 +300,13 @@ Applied through the GitHub REST API (token from Git Credential Manager) and `az`
 - Verified: the extraction step, taken from the workflow, picks exactly the win-x64 nupkg out of
   the four artifacts and yields `tools/any/win-x64/AzureSignTool.exe`; the extracted
   self-contained binary runs `--version` and `sign --help` with no `dotnet` involved.
+
+## Release push runs outside the repo (2026-11-11, Reasonix Code)
+
+- Removing `setup-dotnet` broke `dotnet nuget push`: `global.json` pins SDK 11.0.100 and the
+  windows-2025 image only ships 8.0/9.0/10.0, so any `dotnet` command run from the repository root
+  fails with "A compatible .NET SDK was not found". Signing was unaffected (self-contained exe).
+- The push step now `Push-Location $env:RUNNER_TEMP` and uses absolute package paths, so the pin is
+  not consulted. Reproduced the failure locally with a fake pinned global.json; the step's script
+  pushes all 4 packages in the right order against a folder feed.
+- Record: `.ai/completed/self-contained-tool-packaging.md`.

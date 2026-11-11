@@ -77,3 +77,24 @@ cannot run the per-RID publishes.
 - `osx-*` RIDs are not packaged; signing is Windows-only, and those users get a clear install
   error. Adding `any` to the RID list would provide a framework-dependent fallback.
 - Key Vault signing of four packages per release adds time to the release job.
+
+## Follow-up: release job cannot resolve the pinned SDK (2026-11-11)
+
+Removing `setup-dotnet` broke `dotnet nuget push` on the release runner:
+
+```
+A compatible .NET SDK was not found.
+Requested SDK version: 11.0.100
+global.json file: D:\a\AzureSignTool.Cli\AzureSignTool.Cli\global.json
+```
+
+The image ships 8.0/9.0/10.0 SDKs only, and `global.json` pins `11.0.100` with
+`rollForward: latestFeature`, so *every* `dotnet` command run from the repository root fails —
+including `nuget push`, which needs any SDK but cannot ignore the pin. Signing itself succeeded
+(it is the self-contained exe from the win-x64 package).
+
+Fix: the push step now runs from `$env:RUNNER_TEMP` (outside the repository) with absolute package
+paths, so the pinned SDK is not consulted. Verified by reproducing the failure with a
+`global.json` pinning an absent SDK and running `dotnet nuget push` from inside vs outside that
+directory, then running the step's script against a local folder feed (4 packages pushed in RID-then
+-pointer order, SDK resolved).
