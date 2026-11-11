@@ -29,8 +29,9 @@
 # plus a small pointer package. Consumers therefore need a .NET 10+ CLI to install, but no .NET
 # runtime to run it. RID packages must be pushed before the pointer package.
 #
-# Signing runs the `AzureSignTool` built by this same workflow (the `signing-tool` artifact), so
-# the first release does not depend on a previously published package.
+# Signing unpacks the win-x64 package built by this same workflow and runs its self-contained
+# executable, so the release job installs no .NET and does not depend on a published package.
+# The only .NET use in the release job is `dotnet nuget push`, which the runner image provides.
 
 name: CI
 
@@ -241,26 +242,6 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
-      # The RID-specific publishes land under bin/<config>/net11.0/<rid>/, so stage the
-      # framework-dependent layout the release job signs with into its own directory instead of
-      # uploading the whole bin folder.
-      - name: Stage signing tool
-        shell: pwsh
-        run: |
-          dotnet publish src/AzureSignTool.Cli/AzureSignTool.Cli.csproj `
-            -c $env:BUILD_CONFIGURATION `
-            --no-build `
-            -o signing-tool
-          if ($LASTEXITCODE -ne 0) { throw 'Staging the signing tool failed.' }
-
-      - name: Upload signing tool
-        uses: actions/upload-artifact@v7
-        with:
-          name: signing-tool
-          path: signing-tool
-          if-no-files-found: error
-          retention-days: 7
-
       - name: Upload NuGet packages
         uses: actions/upload-artifact@v7
         with:
@@ -307,15 +288,9 @@ jobs:
             "skip=false" >> $env:GITHUB_OUTPUT
           }
 
-      # The release job never compiles anything: it only needs a .NET 11 host for the built
-      # signing tool and the CLI for `dotnet nuget push`. Asking for 11.0.x lets setup-dotnet
-      # reuse an SDK already in the runner's tool cache; global.json's `rollForward:
-      # latestFeature` accepts any 11.0.x feature band.
-      - name: Install .NET SDK 11.0
-        uses: actions/setup-dotnet@v6
-        with:
-          dotnet-version: '11.0.x'
-
+      # No .NET is installed here on purpose: the signing tool is the self-contained win-x64 binary
+      # from the package built in this same run, and `dotnet nuget push` is a CLI command the
+      # windows-2025 image already provides.
       - name: Validate publishing configuration
         shell: pwsh
         env:
@@ -325,17 +300,27 @@ jobs:
             throw 'The NUGET_USER secret is not set. Trusted publishing cannot log in to nuget.org. Run scripts/Set-GitHubSettings.ps1 or: gh secret set NUGET_USER --repo ${{ github.repository }} --body ismailhassani'
           }
 
-      - name: Download signing tool
-        uses: actions/download-artifact@v8
-        with:
-          name: signing-tool
-          path: signing-tool
-
       - name: Download packages
         uses: actions/download-artifact@v8
         with:
           name: nupkgs
           path: packages
+
+      # Sign with the exact binary that ships: the win-x64 package is self-contained, so no .NET
+      # runtime (and no previously published package) is involved.
+      - name: Extract signing tool
+        if: vars.AZURE_KEYVAULT_URI != ''
+        shell: pwsh
+        run: |
+          $package = @(Get-ChildItem -Path 'packages' -Filter 'AzureSignTool.Cli.win-x64.*.nupkg')
+          if ($package.Count -ne 1) {
+            throw "Expected one AzureSignTool.Cli.win-x64 package, found $($package.Count)."
+          }
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          [System.IO.Compression.ZipFile]::ExtractToDirectory($package[0].FullName, 'signing-tool')
+          if (-not (Test-Path 'signing-tool/tools/any/win-x64/AzureSignTool.exe')) {
+            throw "$($package[0].Name) does not contain tools/any/win-x64/AzureSignTool.exe."
+          }
 
       # The signing app has no subscription role: it reaches the vault through its access policy.
       # azure/login insists on finding a subscription, so the OIDC token is requested directly and
@@ -366,7 +351,7 @@ jobs:
           SIGNING_CERTIFICATE: ${{ vars.AZURE_SIGNING_CERTIFICATE }}
           TIMESTAMP_URL: ${{ vars.TIMESTAMP_URL }}
         run: |
-          dotnet "$env:GITHUB_WORKSPACE\signing-tool\AzureSignTool.dll" sign `
+          & "$env:GITHUB_WORKSPACE\signing-tool\tools\any\win-x64\AzureSignTool.exe" sign `
             -kvu "$env:KEY_VAULT_URI" `
             -kvc "$env:SIGNING_CERTIFICATE" `
             -act WorkloadIdentityCredential `

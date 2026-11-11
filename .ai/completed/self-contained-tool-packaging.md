@@ -53,12 +53,16 @@ cannot run the per-RID publishes.
   `tools/any/<rid>/DotnetToolSettings.xml`, bundles `System.Private.CoreLib.dll`, and its
   runtimeconfig has `includedFrameworks` (no `"framework"`). Guards against silently reverting to
   a framework-dependent package. Negative path checked (throws on a pointer-only folder).
-- **Stage signing tool / Upload signing tool**: the artifact path was
-  `bin/<config>/net11.0`, which now also holds the three RID publish trees (~250 MB). It is
-  replaced by `dotnet publish --no-build -o signing-tool` and that folder is uploaded.
+- **Signing tool**: no `signing-tool` artifact is produced any more. The release job unpacks
+  `AzureSignTool.Cli.win-x64.*.nupkg` (already downloaded for publishing) into `signing-tool/` and
+  runs `tools/any/win-x64/AzureSignTool.exe`, so it signs with the exact self-contained binary
+  that ships and needs no .NET runtime.
+- **No `setup-dotnet` in the release job**: with the signing tool self-contained, the only .NET
+  use left is `dotnet nuget push`, which the `windows-2025` image provides. The job no longer
+  installs an SDK (previously `11.0.x`, only to host a net11.0 framework-dependent signing tool).
 - **Push to NuGet.org**: RID packages are pushed first and the pointer package last, as NuGet
   requires; the previous alphabetical order pushed the pointer first.
-- `signing-tool/` added to `.gitignore`.
+- `signing-tool/` added to `.gitignore` (used by the release job's workspace).
 
 ## Docs
 
